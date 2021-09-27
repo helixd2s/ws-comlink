@@ -78,19 +78,19 @@ class ClassHandler {
     if (target.methods && target.methods.includes(name)) {
       return (async (...args)=>{
         if (target.last) { await target.last; }
-        return (await (target.last = self.call(target.className, name, args)))
+        return (target.last = self.call(target.className, name, args));
       });
     } else
     if (target.getters && target.getters.includes(name)) {
       return (async()=>{
         if (target.last) { await target.last; };
-        return (await (target.last = self.get(target.className, name)));
+        return (target.last = self.get(target.className, name));
       })();
     } else
     if (target.properties && target.properties.includes(name)) {
       return (async (...args)=>{
         if (target.last) { await target.last; }; target.last = null; // await last action, and nullify (make pseudo-parallel getting)
-        return (await (self.get(target.className, name)));
+        return (self.get(target.className, name));
       })();
     } else {
       return target[name];
