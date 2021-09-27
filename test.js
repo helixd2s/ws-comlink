@@ -22,6 +22,6 @@ wss.on('connection', function connection(ws) {
     let transmitter = new WSComlinkTransmitter(ws);
     let job = new Job();
 
-    transmitter.registerClass("job", job);
+    transmitter.register("Job", Job);
 
 });

@@ -12,11 +12,14 @@ ws.on("open", ()=>{
     let receiver = new WSComlinkReceiver(ws);
     receiver.on("register", async (changes)=>{
 
-        let jobs = await receiver.wrapClass(changes.className);
-        jobs.work = 1;
-        console.log(await jobs.practice);
-        console.log(await jobs.work);
-        console.log(await jobs.doWork(3));
+        let Job = receiver.wrap(changes.className).then(async (Job)=>{
+            let jobs = await (new Job());
+            jobs.work = 1;
+            console.log(await jobs.practice);
+            console.log(await jobs.work);
+            console.log(await jobs.doWork(3));
+        });
+
     });
 
 });
