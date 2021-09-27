@@ -3734,11 +3734,11 @@ class ClassHandler {
   async set (target, name, value) {
     let self = this.self;
     if (target.setters && target.setters.includes(name)) {
-      if (target.last) { await target.last; }; // await last action
+      if (target.last) { await target.last; }; target.last = null; // await last action
       await (target.last = (self.set(target.className, name, value)));
     } else 
     if (target.properties && target.properties.includes(name)) {
-      if (target.last) { await target.last; }; // await last action
+      if (target.last) { await target.last; }; target.last = null; // await last action
       await (target.last = (self.set(target.className, name, value)));
     }
   }
@@ -3746,7 +3746,7 @@ class ClassHandler {
     let self = this.self;
     return new Promise(async (resolve, reject)=>{
       console.warn("we returned a promise to class, please wait it");
-      if (target.last) { await target.last; }; // await last action
+      if (target.last) { await target.last; }; target.last = null; // await last action
       let className = await self.construct(target.className, args);
       resolve(self.proxy(className));
     });
@@ -3758,7 +3758,7 @@ class ClassHandler {
     if (thisArg) {
       console.warn("sorry, you can't call method with `this` context");
     };
-    if (target.last) { await target.last; }; // await last action
+    if (target.last) { await target.last; }; target.last = null; // await last action
     return self.call(target.className, args);
   }
 
