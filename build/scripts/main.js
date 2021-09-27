@@ -3712,14 +3712,14 @@ class ClassHandler {
     if (name == "catch") { return target.catch && typeof target.catch == "function" ? target.catch.bind(target) : null; } else
     if (target.methods && target.methods.includes(name)) {
       return (async (...args)=>{
-        if (target.last) { await target.last; }
-        return (target.last = self.call(target.className, name, args));
+        if (target.last) { await target.last; }; target.last = null;
+        return (self.call(target.className, name, args));
       });
     } else
     if (target.getters && target.getters.includes(name)) {
       return (async()=>{
-        if (target.last) { await target.last; };
-        return (target.last = self.get(target.className, name));
+        if (target.last) { await target.last; }; target.last = null;
+        return (self.get(target.className, name));
       })();
     } else
     if (target.properties && target.properties.includes(name)) {
