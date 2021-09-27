@@ -3608,13 +3608,12 @@ ws.on("open", ()=>{
     let receiver = new _index_js__WEBPACK_IMPORTED_MODULE_0__["default"](ws);
     receiver.on("register", async (changes)=>{
 
-        let Job = receiver.wrap(changes.className).then(async (Job)=>{
-            let jobs = await (new Job());
-            jobs.work = 1;
-            console.log(await jobs.practice);
-            console.log(await jobs.work);
-            console.log(await jobs.doWork(3));
-        });
+        let Job = await receiver.proxy(changes.className);
+        let jobs = await (new Job());
+        jobs.work = 1;
+        console.log(await jobs.practice);
+        console.log(await jobs.work);
+        console.log(await jobs.doWork(3));
 
     });
 
@@ -3713,7 +3712,7 @@ class ClassHandler {
     return new Promise(async (resolve, reject)=>{
       console.warn("we returned a promise to class, please wait it");
       let className = await self.construct(target.className, args);
-      resolve(self.wrap(className));
+      resolve(self.proxy(className));
     });
     //console.warn("please, use `class.promise` for get class access");
     //return { promise: (await self.wrapClass(await self.construct(target.className, args))) };
@@ -3905,7 +3904,7 @@ Details: ${details}
     return this.sendRequest({ type: "construct", className, argsRaw: this.encodeArguments(args) });
   }
 
-  async wrap(className) {
+  async proxy(className) {
     let proxy = null;
     let methods = await this.methods(className);
     let properties = await this.properties(className);

@@ -77,7 +77,7 @@ class ClassHandler {
     return new Promise(async (resolve, reject)=>{
       console.warn("we returned a promise to class, please wait it");
       let className = await self.construct(target.className, args);
-      resolve(self.wrap(className));
+      resolve(self.proxy(className));
     });
     //console.warn("please, use `class.promise` for get class access");
     //return { promise: (await self.wrapClass(await self.construct(target.className, args))) };
@@ -269,7 +269,7 @@ Details: ${details}
     return this.sendRequest({ type: "construct", className, argsRaw: this.encodeArguments(args) });
   }
 
-  async wrap(className) {
+  async proxy(className) {
     let proxy = null;
     let methods = await this.methods(className);
     let properties = await this.properties(className);

@@ -10,13 +10,12 @@ ws.on("open", ()=>{
     let receiver = new WSComlink(ws);
     receiver.on("register", async (changes)=>{
 
-        let Job = receiver.wrap(changes.className).then(async (Job)=>{
-            let jobs = await (new Job());
-            jobs.work = 1;
-            console.log(await jobs.practice);
-            console.log(await jobs.work);
-            console.log(await jobs.doWork(3));
-        });
+        let Job = await receiver.proxy(changes.className);
+        let jobs = await (new Job());
+        jobs.work = 1;
+        console.log(await jobs.practice);
+        console.log(await jobs.work);
+        console.log(await jobs.doWork(3));
 
     });
 
