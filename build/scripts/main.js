@@ -3652,7 +3652,8 @@ function getAllFuncs(toCheck) {
   });
 }
 
-function getAllSetterAndGetters(toCheck) {
+
+function getAllGetters(toCheck) {
   let list = [];
   let obj = toCheck;
   do {
@@ -3669,7 +3670,30 @@ function getAllSetterAndGetters(toCheck) {
     return ((a.name < b.name) ? -1 : ((a.name == b.name) ? 0 : 1));
   }).filter((e, i, arr) => {
     let descriptor = e.descriptor;
-    if (e.name!=(arr[i+1]?arr[i+1].name:"") && (descriptor.get || descriptor.set)) return true;
+    if (e.name!=(arr[i+1]?arr[i+1].name:"") && (descriptor.get)) return true;
+  });
+
+  return list.map((p)=>{return p.name;});
+}
+
+function getAllSetters(toCheck) {
+  let list = [];
+  let obj = toCheck;
+  do {
+    let names = Object.getOwnPropertyNames(obj);
+    list.push(...names.map((name)=>{
+      return {
+        name: name,
+        descriptor: Object.getOwnPropertyDescriptor(obj, name)
+      }
+    } ));
+  } while (obj = Object.getPrototypeOf(obj));
+
+  list = list.sort((a, b)=>{
+    return ((a.name < b.name) ? -1 : ((a.name == b.name) ? 0 : 1));
+  }).filter((e, i, arr) => {
+    let descriptor = e.descriptor;
+    if (e.name!=(arr[i+1]?arr[i+1].name:"") && (descriptor.set)) return true;
   });
 
   return list.map((p)=>{return p.name;});
@@ -3692,10 +3716,16 @@ class ClassHandler {
         return (await (target.last = self.call(target.className, name, args)))
       });
     } else
-    if (target.properties && target.properties.includes(name)) {
+    if (target.getters && target.getters.includes(name)) {
       return (async()=>{
-        if (target.last) { await target.last; }
+        if (target.last) { await target.last; };
         return (await (target.last = self.get(target.className, name)));
+      })();
+    } else
+    if (target.properties && target.properties.includes(name)) {
+      return (async (...args)=>{
+        if (target.last) { await target.last; }; target.last = null; // await last action, and nullify (make pseudo-parallel getting)
+        return (await (self.get(target.className, name)));
       })();
     } else {
       return target[name];
@@ -3703,7 +3733,12 @@ class ClassHandler {
   }
   async set (target, name, value) {
     let self = this.self;
-    if (target.properties.includes(name)) {
+    if (target.setters && target.setters.includes(name)) {
+      if (target.last) { await target.last; }; // await last action
+      await (target.last = (self.set(target.className, name, value)));
+    } else 
+    if (target.properties && target.properties.includes(name)) {
+      if (target.last) { await target.last; }; // await last action
       await (target.last = (self.set(target.className, name, value)));
     }
   }
@@ -3711,17 +3746,19 @@ class ClassHandler {
     let self = this.self;
     return new Promise(async (resolve, reject)=>{
       console.warn("we returned a promise to class, please wait it");
+      if (target.last) { await target.last; }; // await last action
       let className = await self.construct(target.className, args);
       resolve(self.proxy(className));
     });
     //console.warn("please, use `class.promise` for get class access");
     //return { promise: (await self.wrapClass(await self.construct(target.className, args))) };
   }
-  apply(target, thisArg, argumentsList) {
+  async apply(target, thisArg, argumentsList) {
     let self = this.self;
     if (thisArg) {
       console.warn("sorry, you can't call method with `this` context");
     };
+    if (target.last) { await target.last; }; // await last action
     return self.call(target.className, args);
   }
 
@@ -3790,13 +3827,33 @@ class WSComlink {
         });
       }
 
+      // remote methods
+      if (type == "getters") {
+        this.sendAnswer({
+          type: "result",
+          id,
+          className,
+          result: getAllGetters(classObj)
+        });
+      }
+
+      // remote methods
+      if (type == "setters") {
+        this.sendAnswer({
+          type: "result",
+          id,
+          className,
+          result: getAllSetters(classObj)
+        });
+      }
+
       // 
       if (type == "properties") {
         this.sendAnswer({
           type: "result",
           id,
           className,
-          result: Object.keys(classObj).concat(getAllSetterAndGetters(classObj))
+          result: Object.keys(classObj)
         });
       }
 
@@ -3883,6 +3940,14 @@ Details: ${details}
     return this.sendRequest({ type: "properties", className });
   }
 
+  getters(className) {
+    return this.sendRequest({ type: "getters", className });
+  }
+
+  setters(className) {
+    return this.sendRequest({ type: "setters", className });
+  }
+
   set(className, methodName, value) {
     //value = !(typeof methodName == "string" || methodName instanceof String) ? methodName : value;
     //methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
@@ -3906,13 +3971,13 @@ Details: ${details}
 
   async proxy(className) {
     let proxy = null;
-    let [methods, properties] = await Promise.all([this.methods(className), this.properties(className)]);
+    let [methods, properties, getters, setters] = await Promise.all([this.methods(className), this.properties(className), this.getters(className), this.setters(className)]);
 
     // make promise for proxy
     let obj = function(...args) {
       console.error("For Proxy, isn't it?");
     };
-    Object.assign(obj, { className, methods, properties, last: null });
+    Object.assign(obj, { className, methods, properties, getters, setters, last: null });
 
     //
     return (proxy = new Proxy(obj, this.handler));
