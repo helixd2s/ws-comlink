@@ -1,0 +1,15 @@
+{
+  "name": "wscom",
+  "version": "1.0.0",
+  "description": "Websocket remote classes",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "websocket",
+    "classes"
+  ],
+  "author": "helixd2s",
+  "license": "MIT"
+}
