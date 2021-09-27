@@ -3906,8 +3906,7 @@ Details: ${details}
 
   async proxy(className) {
     let proxy = null;
-    let methods = await this.methods(className);
-    let properties = await this.properties(className);
+    let [methods, properties] = await Promise.all([this.methods(className), this.properties(className)]);
 
     // make promise for proxy
     let obj = function(...args) {
