@@ -1,4 +1,4 @@
-import {WSComlinkReceiver, WSComlinkTransmitter} from "./index.js";
+import WSComlink from "./index.js";
 import {WebSocketServer} from 'ws';
 
 const wss = new WebSocketServer({ port: 8000 });
@@ -19,7 +19,7 @@ class Job {
 }
 
 wss.on('connection', function connection(ws) {
-    let transmitter = new WSComlinkTransmitter(ws);
+    let transmitter = new WSComlink(ws);
     let job = new Job();
 
     transmitter.register("Job", Job);

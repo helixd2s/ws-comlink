@@ -40,102 +40,6 @@ function getAllSetterAndGetters(toCheck) {
   return list.map((p)=>{return p.name;});
 }
 
-class WSComlinkTransmitter {
-  constructor(connection) {
-    this.connection = connection;
-    this.classes = {};
-    this.observe();
-  }
-
-  decodeArguments(args) {
-    return JSON.parse(args);
-  }
-
-  send(obj) {
-    this.connection.send(JSON.stringify(obj));
-  }
-
-  register(name, object) {
-    this.classes[name] = object;
-    let id = uuid();
-    this.send({ id, type: "register", result: {
-      className: name
-    } });
-  }
-
-  observe() {
-    this.connection.on("message", async (message, isBinary)=>{
-      let json = message.data ? message.data : message.toString('utf8');
-      let {type, id, className, methodName, argsRaw} = JSON.parse(json);
-      let args = argsRaw ? this.decodeArguments(argsRaw) : null;
-
-      // remote methods
-      if (type == "methods") { 
-        this.send({
-          type: "result", 
-          id, 
-          className, 
-          result: getAllFuncs(this.classes[className]) 
-        });
-      };
-
-      // 
-      if (type == "properties") { 
-        this.send({
-          type: "result", 
-          id, 
-          className, 
-          result: Object.keys(this.classes[className]).concat(getAllSetterAndGetters(this.classes[className]))
-        });
-      };
-
-      // remote function call
-      if (type == "call") { 
-        this.send({ 
-          type: "result", 
-          id, 
-          className, 
-          methodName, 
-          result: methodName ? (await this.classes[className][methodName](...args)) : (await this.classes[className](...args))
-        });
-      };
-
-      // remote create class (return link to class)
-      if (type == "construct") {
-        let newClassName = uuid();
-        this.classes[newClassName] = new this.classes[className](...args);
-        this.send({
-          type: "result", 
-          id, 
-          className, 
-          result: newClassName
-        });
-      };
-
-      // remote getter
-      if (type == "get") { 
-        this.send({
-          type: "result", 
-          id, 
-          className, 
-          methodName, 
-          result: await this.classes[className][methodName] 
-        });
-      };
-
-      // remote setter
-      if (type == "set") { 
-        this.send({
-          type: "result", 
-          id, 
-          className, 
-          methodName, 
-          result: (this.classes[className][methodName] = args[0]) 
-        });
-      };
-    });
-  }
-}
 
 
 class ClassHandler {
@@ -185,10 +89,10 @@ class ClassHandler {
     };
     return self.call(target.className, args);
   }
+
 }
 
-
-class WSComlinkReceiver {
+class WSComlink {
   constructor(connection) {
     this.connection = connection;
     this.classes = {};
@@ -200,21 +104,126 @@ class WSComlinkReceiver {
     this.observe();
   }
 
+  decodeArguments(args) {
+    return JSON.parse(args);
+  }
+
   encodeArguments(args) {
     return JSON.stringify(args);
   }
 
-  observe() {
-    this.connection.on("message", (message)=>{
-      let json = message.data ? message.data : message.toString('utf8');
-      let {type, id, result} = JSON.parse(json);
-      let callObj = this.calls[id];
-      if (type == "result") { callObj.resolve(result); }
-      //if (type == "methods") { callObj.resolve({ id, result }); }
-      //if (type == "properties") { callObj.resolve({ id, result }); }
-      if (type == "register") { this.watchers["register"].forEach((cb)=>{ cb(result); }) };
+  sendAnswer(obj) {
+    this.connection.send(JSON.stringify(obj));
+  }
+
+  sendRequest(obj) {
+    let id = uuid();
+    this.connection.send(JSON.stringify(Object.assign(obj, { id })));
+    this.calls[id] = obj;
+    Object.assign(this.calls[id], {
+      id, promise: new Promise((resolve, reject)=>{
+        this.calls[id].resolve = (...args) => { resolve(...args); delete this.calls[id]; };
+        this.calls[id].reject = (...args) => { reject(...args); delete this.calls[id]; };
+      })
     });
-    this.connection.on("close", (reason, details)=>{
+    return this.calls[id].promise;
+  }
+
+  register(name, object) {
+    this.classes[name] = object;
+    let id = uuid();
+    this.sendAnswer({ id, type: "register", result: {
+      className: name
+    } });
+  }
+
+  observe() {
+    this.connection.on("message", async (message, isBinary) => {
+      let json = message.data ? message.data : message.toString('utf8');
+      let {type, id, className, methodName, argsRaw, result} = JSON.parse(json);
+      let args = argsRaw ? this.decodeArguments(argsRaw) : null;
+      let callObj = this.calls[id];
+      let classObj = this.classes[className];
+
+      // remote methods
+      if (type == "methods") {
+        this.sendAnswer({
+          type: "result",
+          id,
+          className,
+          result: getAllFuncs(classObj)
+        });
+      }
+
+      // 
+      if (type == "properties") {
+        this.sendAnswer({
+          type: "result",
+          id,
+          className,
+          result: Object.keys(classObj).concat(getAllSetterAndGetters(classObj))
+        });
+      }
+
+      // remote function call
+      if (type == "call") {
+        this.sendAnswer({
+          type: "result",
+          id,
+          className,
+          methodName,
+          result: methodName ? (await classObj[methodName](...args)) : (await classObj(...args))
+        });
+      }
+
+      // remote create class (return link to class)
+      if (type == "construct") {
+        let newClassName = uuid();
+        this.classes[newClassName] = new classObj(...args);
+        this.sendAnswer({
+          type: "result",
+          id,
+          className,
+          result: newClassName
+        });
+      }
+
+      // remote getter
+      if (type == "get") {
+        this.sendAnswer({
+          type: "result",
+          id,
+          className,
+          methodName,
+          result: methodName ? (await classObj[methodName]) : (await classObj)
+        });
+      }
+
+      // remote setter
+      if (type == "set") {
+        this.sendAnswer({
+          type: "result",
+          id,
+          className,
+          methodName,
+          result: (methodName ? (classObj[methodName] = args[0]) : (classObj = args[0]))
+        });
+      }
+
+      // remote results listener
+      if (type == "result" && callObj) {
+        callObj.resolve(result);
+      }
+
+      // on register event
+      if (type == "register") {
+        this.watchers["register"].forEach((cb) => {
+          cb(result);
+        })
+      }
+    });
+
+    this.connection.on("close", (reason, details) => {
       for (let id in this.calls) {
         let callObj = this.calls[id];
         callObj.reject(reason, details);
@@ -231,43 +240,33 @@ Details: ${details}
     this.watchers[name].push(cb);
   }
 
-  send(obj) {
-    let id = uuid();
-    this.connection.send(JSON.stringify(Object.assign(obj, { id })));
-    this.calls[id] = obj;
-    Object.assign(this.calls[id], {
-      id, promise: new Promise((resolve, reject)=>{
-        this.calls[id].resolve = (...args) => { resolve(...args); delete this.calls[id]; };
-        this.calls[id].reject = (...args) => { reject(...args); delete this.calls[id]; };
-      })
-    });
-    return this.calls[id].promise;
-  }
-
   methods(className) {
-    return this.send({ type: "methods", className });
+    return this.sendRequest({ type: "methods", className });
   }
 
   properties(className) {
-    return this.send({ type: "properties", className });
+    return this.sendRequest({ type: "properties", className });
   }
 
   set(className, methodName, value) {
-    return this.send({ type: "set", className, methodName, argsRaw: this.encodeArguments([value]) });
+    //value = !(typeof methodName == "string" || methodName instanceof String) ? methodName : value;
+    //methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
+    return this.sendRequest({ type: "set", className, methodName, argsRaw: this.encodeArguments([value]) });
   }
 
   get(className, methodName) {
-    return this.send({ type: "get", className, methodName });
+    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
+    return this.sendRequest({ type: "get", className, methodName });
   }
 
   call(className, methodName, args) {
     args = Array.isArray(methodName) ? methodName : args;
     methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
-    return this.send({ type: "call", className, methodName, argsRaw: this.encodeArguments(args) });
+    return this.sendRequest({ type: "call", className, methodName, argsRaw: this.encodeArguments(args) });
   }
 
   construct(className, args) {
-    return this.send({ type: "construct", className, argsRaw: this.encodeArguments(args) });
+    return this.sendRequest({ type: "construct", className, argsRaw: this.encodeArguments(args) });
   }
 
   async wrap(className) {
@@ -286,4 +285,4 @@ Details: ${details}
   }
 }
 
-export {WSComlinkReceiver, WSComlinkTransmitter};
+export default WSComlink;

@@ -1,15 +1,13 @@
-import {WSComlinkReceiver, WSComlinkTransmitter} from "../../index.js";
+import WSComlink from "../../index.js";
 import WebSocketWrapper from 'ws-wrapper';
 
 const ws = new WebSocketWrapper(new WebSocket('ws://127.0.0.1:8000/'));
-
-console.log(ws);
 
 ws.on("open", ()=>{
 
     console.log("opened");
 
-    let receiver = new WSComlinkReceiver(ws);
+    let receiver = new WSComlink(ws);
     receiver.on("register", async (changes)=>{
 
         let Job = receiver.wrap(changes.className).then(async (Job)=>{
