@@ -137,11 +137,63 @@ class WSComlinkTransmitter {
   }
 }
 
+
+class ClassHandler {
+  constructor(self) {
+    this.self = self;
+  }
+  get (target, name) {
+    let self = this.self;
+    if (name == "_last") { return target.last; } else
+    if (name == "then") { return target.then && typeof target.then == "function" ? target.then.bind(target) : null; } else
+    if (name == "catch") { return target.catch && typeof target.catch == "function" ? target.catch.bind(target) : null; } else
+    if (target.methods && target.methods.includes(name)) {
+      return (async (...args)=>{
+        if (target.last) { await target.last; }
+        return (await (target.last = self.call(target.className, name, args)))
+      });
+    } else
+    if (target.properties && target.properties.includes(name)) {
+      return (async()=>{
+        if (target.last) { await target.last; }
+        return (await (target.last = self.get(target.className, name)));
+      })();
+    } else {
+      return target[name];
+    }
+  }
+  async set (target, name, value) {
+    let self = this.self;
+    if (target.properties.includes(name)) {
+      await (target.last = (self.set(target.className, name, value)));
+    }
+  }
+  construct(target, args, newTarget) {
+    let self = this.self;
+    return new Promise(async (resolve, reject)=>{
+      console.warn("we returned a promise to class, please wait it");
+      let className = await self.construct(target.className, args);
+      resolve(self.wrap(className));
+    });
+    //console.warn("please, use `class.promise` for get class access");
+    //return { promise: (await self.wrapClass(await self.construct(target.className, args))) };
+  }
+  apply(target, thisArg, argumentsList) {
+    let self = this.self;
+    if (thisArg) {
+      console.warn("sorry, you can't call method with `this` context");
+    };
+    return self.call(target.className, args);
+  }
+}
+
+
 class WSComlinkReceiver {
   constructor(connection) {
     this.connection = connection;
     this.classes = {};
     this.calls = {};
+    this.handler = new ClassHandler(this);
     this.watchers = {
       register: []
     };
@@ -230,48 +282,7 @@ Details: ${details}
     Object.assign(obj, { className, methods, properties, last: null });
 
     //
-    let handler = {
-      get: (target, name) => {
-        if (name == "_last") { return target.last; } else
-        if (name == "then") { return target.then && typeof target.then == "function" ? target.then.bind(target) : null; } else
-        if (name == "catch") { return target.catch && typeof target.catch == "function" ? target.catch.bind(target) : null; } else
-        if (target.methods && target.methods.includes(name)) {
-          return (async (...args)=>{
-            if (target.last) { await target.last; }
-            return (await (target.last = this.call(target.className, name, args)))
-          });
-        } else
-        if (target.properties && target.properties.includes(name)) {
-          return (async()=>{
-            if (target.last) { await target.last; }
-            return (await (target.last = this.get(target.className, name)));
-          })();
-        } else {
-          return target[name];
-        }
-      },
-      set: async (target, name, value) => {
-        if (target.properties.includes(name)) {
-          await (target.last = (this.set(target.className, name, value)));
-        }
-      },
-      construct: (target, args, newTarget) => {
-        return new Promise(async (resolve, reject)=>{
-          console.warn("we returned a promise to class, please wait it");
-          let className = await this.construct(target.className, args);
-          resolve(this.wrap(className));
-        });
-        //console.warn("please, use `class.promise` for get class access");
-        //return { promise: (await this.wrapClass(await this.construct(target.className, args))) };
-      },
-      apply: (target, thisArg, argumentsList) => {
-        if (thisArg) {
-          console.warn("sorry, you can't call method with `this` context");
-        };
-        return this.call(target.className, args);
-      }
-    };
-    return (proxy = new Proxy(obj, handler));
+    return (proxy = new Proxy(obj, this.handler));
   }
 }
 
