@@ -124,7 +124,7 @@ class ClassHandler {
       console.warn("sorry, you can't call method with `this` context");
     };
     if (target.last) { await target.last; }; // await last action
-    return self.call(target.className, args);
+    return (target.last = self.call(target.className, args));
   }
 
 }
