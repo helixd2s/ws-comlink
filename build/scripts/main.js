@@ -3812,99 +3812,88 @@ class WSComlink {
   observe() {
     this.connection.on("message", async (message, isBinary) => {
       let json = message.data ? message.data : message.toString('utf8');
-      let {type, id, className, methodName, argsRaw, result} = JSON.parse(json);
+      let {type, id, className, methodName, argsRaw, result, error} = JSON.parse(json);
       let args = argsRaw ? this.decodeArguments(argsRaw) : null;
       let callObj = this.calls[id];
       let classObj = this.classes[className];
 
-      // remote methods
-      if (type == "methods") {
-        this.sendAnswer({
-          type: "result",
-          id,
-          className,
-          result: getAllFuncs(classObj)
-        });
+      try {
+        switch(type) {
+          case "methods":
+            result = getAllFuncs(classObj);
+            break;
+          case "getters":
+            result = getAllGetters(classObj);
+            break;
+          case "setters":
+            result = getAllSetters(classObj);
+            break;
+          case "properties":
+            result = Object.keys(classObj);
+            break;
+          case "call":
+            result = methodName ? (await classObj[methodName](...args)) : (await classObj(...args));
+            break;
+          case "construct":
+            this.classes[result = uuid()] = new classObj(...args);
+            break;
+          case "get":
+            result = methodName ? (await classObj[methodName]) : (await classObj);
+            break;
+          case "set":
+            result = (methodName ? (classObj[methodName] = args[0]) : (classObj = args[0]));
+            break;
+          default:
+        }
+      } catch(e) {
+        error = `
+Message: ${e.message}\n
+Filename: ${e.fileName}\n
+LineNumber: ${e.lineNumber}\n
+`;
+        console.error(`ERROR!\n${error}`);
       }
 
-      // remote methods
-      if (type == "getters") {
-        this.sendAnswer({
-          type: "result",
-          id,
-          className,
-          result: getAllGetters(classObj)
-        });
-      }
-
-      // remote methods
-      if (type == "setters") {
-        this.sendAnswer({
-          type: "result",
-          id,
-          className,
-          result: getAllSetters(classObj)
-        });
-      }
-
-      // 
-      if (type == "properties") {
-        this.sendAnswer({
-          type: "result",
-          id,
-          className,
-          result: Object.keys(classObj)
-        });
-      }
-
-      // remote function call
-      if (type == "call") {
-        this.sendAnswer({
-          type: "result",
-          id,
-          className,
-          methodName,
-          result: methodName ? (await classObj[methodName](...args)) : (await classObj(...args))
-        });
-      }
-
-      // remote create class (return link to class)
-      if (type == "construct") {
-        let newClassName = uuid();
-        this.classes[newClassName] = new classObj(...args);
-        this.sendAnswer({
-          type: "result",
-          id,
-          className,
-          result: newClassName
-        });
-      }
-
-      // remote getter
-      if (type == "get") {
+      // send result
+      if (typeof result != "undefined") {
         this.sendAnswer({
           type: "result",
           id,
           className,
           methodName,
-          result: methodName ? (await classObj[methodName]) : (await classObj)
+          result: result
         });
       }
 
-      // remote setter
-      if (type == "set") {
+      //
+      if (typeof error != "undefined") {
         this.sendAnswer({
-          type: "result",
+          type: "error",
           id,
           className,
           methodName,
-          result: (methodName ? (classObj[methodName] = args[0]) : (classObj = args[0]))
+          error: error
         });
       }
 
-      // remote results listener
+      // receive result
       if (type == "result" && callObj) {
         callObj.resolve(result);
+      }
+
+      // present full debug info
+      if (type == "error" && callObj) {
+        let fullError = `ERROR!\n
+CallId: ${id}\n
+Type: ${callObj.type}\n
+ClassName: ${callObj.className}\n
+MethodName: ${callObj.methodName}\n
+Arguments: ${callObj.args}\n
+${error}\n
+Please, send it to server or user-end developers.
+`;
+        callObj.reject(fullError);
+        console.error(fullError);
       }
 
       // on register event
@@ -3918,12 +3907,18 @@ class WSComlink {
     this.connection.on("close", (reason, details) => {
       for (let id in this.calls) {
         let callObj = this.calls[id];
-        callObj.reject(reason, details);
-        console.error(`
-Call uuid ${id}, type ${callObj.type}, className ${callObj.className}, methodName ${callObj.methodName}, with arguments ${callObj.args} was failed.\n
+        let error = `DISCONNECTED!\n
+CallId ${id}\n
+Type ${callObj.type}\n
+ClassName ${callObj.className}\n
+MethodName ${callObj.methodName}\n
+Arguments ${callObj.args}\n
 Reason ${reason}\n
-Details: ${details}
-`);
+Details: ${details}\n
+Please, notify server developers, or try to reload webpage.
+`;
+        callObj.reject(error);
+        console.error(error);
       }
     });
   }
