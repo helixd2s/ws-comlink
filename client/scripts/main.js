@@ -15,7 +15,7 @@ ws.on("open", ()=>{
         jobs.work = 1;
         console.log(await jobs.practice);
         console.log(await jobs.work);
-        console.log(await jobs.doWork(3));
+        console.log(await (await jobs.doWork)(3));
 
     });
 

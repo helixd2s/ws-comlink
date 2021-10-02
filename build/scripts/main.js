@@ -3613,7 +3613,7 @@ ws.on("open", ()=>{
         jobs.work = 1;
         console.log(await jobs.practice);
         console.log(await jobs.work);
-        console.log(await jobs.doWork(3));
+        console.log(await (await jobs.doWork)(3));
 
     });
 
@@ -3640,6 +3640,7 @@ function uuid() {
   });
 }
 
+/*
 function getAllFuncs(toCheck) {
   const props = [];
   let obj = toCheck;
@@ -3651,7 +3652,6 @@ function getAllFuncs(toCheck) {
      if (e!=arr[i+1] && e != "caller" && e != "callee" && e != "arguments" && typeof toCheck[e] == 'function') return true;
   });
 }
-
 
 function getAllGetters(toCheck) {
   let list = [];
@@ -3698,7 +3698,7 @@ function getAllSetters(toCheck) {
 
   return list.map((p)=>{return p.name;});
 }
-
+*/
 
 
 class ClassHandler {
@@ -3710,37 +3710,17 @@ class ClassHandler {
     if (name == "_last") { return target.last; } else
     if (name == "then") { return target.then && typeof target.then == "function" ? target.then.bind(target) : null; } else
     if (name == "catch") { return target.catch && typeof target.catch == "function" ? target.catch.bind(target) : null; } else
-    if (target.methods && target.methods.includes(name)) {
-      return (async (...args)=>{
-        if (target.last) { await target.last; }; target.last = null;
-        return (self.call(target.className, name, args));
-      });
-    } else
-    if (target.getters && target.getters.includes(name)) {
-      return (async()=>{
-        if (target.last) { await target.last; }; target.last = null;
-        return (self.get(target.className, name));
-      })();
-    } else
-    if (target.properties && target.properties.includes(name)) {
-      return (async (...args)=>{
-        if (target.last) { await target.last; }; target.last = null; // await last action, and nullify (make pseudo-parallel getting)
-        return (self.get(target.className, name));
-      })();
-    } else {
-      return target[name];
-    }
+    return (async()=>{
+      if (target.last) { await target.last; }; target.last = null;
+      return (self.get(target.className, name));
+    })();
   }
   async set (target, name, value) {
     let self = this.self;
-    if (target.setters && target.setters.includes(name)) {
+
       if (target.last) { await target.last; }; target.last = null; // await last action
       await (target.last = (self.set(target.className, name, value)));
-    } else 
-    if (target.properties && target.properties.includes(name)) {
-      if (target.last) { await target.last; }; target.last = null; // await last action
-      await (target.last = (self.set(target.className, name, value)));
-    }
+
   }
   construct(target, args, newTarget) {
     let self = this.self;
@@ -3753,7 +3733,7 @@ class ClassHandler {
     //console.warn("please, use `class.promise` for get class access");
     //return { promise: (await self.wrapClass(await self.construct(target.className, args))) };
   }
-  async apply(target, thisArg, argumentsList) {
+  async apply(target, thisArg, args) {
     let self = this.self;
     if (thisArg) {
       console.warn("sorry, you can't call method with `this` context");
@@ -3767,7 +3747,7 @@ class ClassHandler {
 class WSComlink {
   constructor(connection) {
     this.connection = connection;
-    this.classes = {};
+    this.objects = {};
     this.calls = {};
     this.handler = new ClassHandler(this);
     this.watchers = {
@@ -3792,17 +3772,28 @@ class WSComlink {
     let id = uuid();
     this.connection.send(JSON.stringify(Object.assign(obj, { id })));
     this.calls[id] = obj;
+
+    //
     Object.assign(this.calls[id], {
       id, promise: new Promise((resolve, reject)=>{
         this.calls[id].resolve = (...args) => { resolve(...args); delete this.calls[id]; };
         this.calls[id].reject = (...args) => { reject(...args); delete this.calls[id]; };
       })
     });
-    return this.calls[id].promise;
+
+    // handle type
+    return (async()=>{
+      let result = await this.calls[id].promise;
+      if (result.type == "function") {
+        return this.proxy(result.className);//(...args) => { return this.call(result.className, result.methodName, args); };
+      } else {
+        return result.data;
+      }
+    })();
   }
 
   register(name, object) {
-    this.classes[name] = object;
+    this.objects[name] = object;
     let id = uuid();
     this.sendAnswer({ id, type: "register", result: {
       className: name
@@ -3815,33 +3806,27 @@ class WSComlink {
       let {type, id, className, methodName, argsRaw, result, error} = JSON.parse(json);
       let args = argsRaw ? this.decodeArguments(argsRaw) : null;
       let callObj = this.calls[id];
-      let classObj = this.classes[className];
+      let classObj = this.objects[className];
+      let got = undefined, typeOf = "undefined";
 
       try {
         switch(type) {
-          case "methods":
-            result = getAllFuncs(classObj);
-            break;
-          case "getters":
-            result = getAllGetters(classObj);
-            break;
-          case "setters":
-            result = getAllSetters(classObj);
-            break;
-          case "properties":
-            result = Object.keys(classObj);
-            break;
           case "call":
-            result = methodName ? (await classObj[methodName](...args)) : (await classObj(...args));
+            got = methodName ? (await classObj[methodName](...args)) : (await classObj(...args)), typeOf = typeof got;
+            result = { type: typeOf, className, methodName, data: got };
             break;
           case "construct":
-            this.classes[result = uuid()] = new classObj(...args);
+            this.objects[className = uuid()] = new classObj(...args);
+            result = { type: "object", className, methodName, data: className };
             break;
           case "get":
-            result = methodName ? (await classObj[methodName]) : (await classObj);
+            got = methodName ? (await classObj[methodName]) : (await classObj), typeOf = typeof got;
+            if (typeOf == "function") { this.objects[className = uuid()] = got.bind(classObj); methodName = ""; };
+            result = { type: typeOf, className, methodName, data: got };
             break;
           case "set":
-            result = (methodName ? (classObj[methodName] = args[0]) : (classObj = args[0]));
+            got = (methodName ? (classObj[methodName] = args[0]) : (classObj = args[0])), typeOf = typeof got;
+            result = { type: typeOf, className, methodName, data: got };
             break;
           default:
         }
@@ -3850,6 +3835,8 @@ class WSComlink {
 Message: ${e.message}\n
 Filename: ${e.fileName}\n
 LineNumber: ${e.lineNumber}\n
+MethodName: ${e.methodName}\n
+ClassName: ${e.className}\n
 `;
         console.error(`ERROR!\n${error}`);
       }
@@ -3927,22 +3914,6 @@ Please, notify server developers, or try to reload webpage.
     this.watchers[name].push(cb);
   }
 
-  methods(className) {
-    return this.sendRequest({ type: "methods", className });
-  }
-
-  properties(className) {
-    return this.sendRequest({ type: "properties", className });
-  }
-
-  getters(className) {
-    return this.sendRequest({ type: "getters", className });
-  }
-
-  setters(className) {
-    return this.sendRequest({ type: "setters", className });
-  }
-
   set(className, methodName, value) {
     //value = !(typeof methodName == "string" || methodName instanceof String) ? methodName : value;
     //methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
@@ -3966,13 +3937,12 @@ Please, notify server developers, or try to reload webpage.
 
   async proxy(className) {
     let proxy = null;
-    let [methods, properties, getters, setters] = await Promise.all([this.methods(className), this.properties(className), this.getters(className), this.setters(className)]);
 
     // make promise for proxy
     let obj = function(...args) {
       console.error("For Proxy, isn't it?");
     };
-    Object.assign(obj, { className, methods, properties, getters, setters, last: null });
+    Object.assign(obj, { className, last: null });
 
     //
     return (proxy = new Proxy(obj, this.handler));
