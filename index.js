@@ -75,10 +75,13 @@ class ClassHandler {
     if (name == "_last") { return target.last; } else
     if (name == "then") { return target.then && typeof target.then == "function" ? target.then.bind(target) : null; } else
     if (name == "catch") { return target.catch && typeof target.catch == "function" ? target.catch.bind(target) : null; } else
-    return (async()=>{
-      if (target.last) { await target.last; }; target.last = null;
-      return (self.get(target.className, name));
-    })();
+    if (name == "isProxy") { return true; } else
+    {
+      return (async()=>{
+        if (target.last) { await target.last; }; target.last = null;
+        return (self.get(target.className, name));
+      })();
+    }
   }
   async set (target, name, value) {
     let self = this.self;
@@ -122,11 +125,25 @@ class WSComlink {
   }
 
   decodeArguments(args) {
-    return JSON.parse(args);
+    return JSON.parse(args).map((a)=>{
+      let data = a.data;
+      if (a.type == "function" || a.type == "proxy") { data = this.proxy(a.className); };
+      return data;
+    });
   }
 
   encodeArguments(args) {
-    return JSON.stringify(args);
+    return JSON.stringify(args.map((a)=>{
+      let typeOf = typeof a;
+      let className = "";
+      if (typeOf == "function" || a.isProxy) { this.register(className = uuid(), a); };
+      if (typeOf == "object") {}
+      return {
+        type: a.isProxy ? "proxy" : typeOf,
+        className,
+        data: a
+      }
+    }));
   }
 
   sendAnswer(obj) {
@@ -300,7 +317,7 @@ Please, notify server developers, or try to reload webpage.
     return this.sendRequest({ type: "construct", className, argsRaw: this.encodeArguments(args) });
   }
 
-  async proxy(className) {
+  proxy(className) {
     let proxy = null;
 
     // make promise for proxy
