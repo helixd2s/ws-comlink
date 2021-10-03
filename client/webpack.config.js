@@ -79,15 +79,8 @@ export default {
   devtool: 'source-map',
   resolve: {
     fallback: { 
-      "stream": require.resolve("stream-browserify"), 
-      "crypto": require.resolve("crypto-browserify"), 
-      "https": require.resolve("https-browserify"), 
-      "http": require.resolve("stream-http"), 
-      "zlib": require.resolve("browserify-zlib"), 
-      "buffer": require.resolve("buffer"),
-      "util": require.resolve("util"),
-      "assert": require.resolve("assert"),
-      "os": require.resolve("os-browserify/browser")
+      "stream": require.resolve("stream-browserify"),
+      "path": require.resolve("path-browserify")
     },
     modules: [path.resolve(__dirname, 'node_modules'), path.resolve(__dirname, '../node_modules'), 'node_modules', '../node_modules']
   },
