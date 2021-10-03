@@ -150,7 +150,11 @@ Object.assign(handlers, {
 // not the function wrapping it
 Object.getOwnPropertyNames(Reflect).forEach(function (handler) {
     handlers[handler] = handlers[handler] || function (target, ...args) {
-        return Reflect[handler](target(), ...args);
+      //return Reflect[handler](target(), ...args);
+      // prefer to apply with result object
+      return wrap(target().then((results)=>{
+        return Reflect[handler](results, ...args);
+      }));
     };
 });
 
