@@ -65,7 +65,6 @@ function getAllSetters(toCheck) {
 }
 */
 
-
 class ClassHandler {
   constructor(self) {
     this.self = self;
@@ -75,7 +74,9 @@ class ClassHandler {
     if (name == "_last") { return target.last; } else
     if (name == "then") { return target.then && typeof target.then == "function" ? target.then.bind(target) : null; } else
     if (name == "catch") { return target.catch && typeof target.catch == "function" ? target.catch.bind(target) : null; } else
-    if (name == "isProxy") { return true; } else
+    if (name == "$isProxy") { return true; } else
+    if (name == "$className") { return target.className; } else
+    if (name == "$temporary") { return target.temporary; } else
     {
       return (async()=>{
         if (target.last) { await target.last; }; target.last = null;
@@ -85,10 +86,11 @@ class ClassHandler {
   }
   async set (target, name, value) {
     let self = this.self;
-
-      if (target.last) { await target.last; }; target.last = null; // await last action
-      await (target.last = (self.set(target.className, name, value)));
-
+      if (name == "$temporary") { target.temporary = !!value; } else
+      {
+        if (target.last) { await target.last; }; target.last = null; // await last action
+        await (target.last = (self.set(target.className, name, value)));
+      }
   }
   construct(target, args, newTarget) {
     let self = this.self;
@@ -127,23 +129,39 @@ class WSComlink {
   decodeArguments(args) {
     return JSON.parse(args).map((a)=>{
       let data = a.data;
-      if (a.type == "function" || a.type == "proxy") { data = this.proxy(a.className); };
+      if (a.temporary && this.objects[a.className]) { data = this.objects[a.className]; delete this.objects[a.className]; } else // delete temporary and make direct call (non-native proxy)
+      if ((a.type == "function" || a.type == "proxy") && this.objects[a.$className]) { data = this.objects[a.$className]; if (a.$temporary) { delete this.objects[a.$className]; }; } else  // identify, and make a direct call (native proxy)
+      if ( a.type == "function" || a.type == "proxy") { data = this.proxy(a.className); }; // make proxy for functions and constructor's (non-native proxy)
       return data;
     });
   }
 
   encodeArguments(args) {
     return JSON.stringify(args.map((a)=>{
-      let typeOf = typeof a;
       let className = "";
-      if (typeOf == "function" || a.isProxy) { this.register(className = uuid(), a); };
-      if (typeOf == "object") {}
+      let typeOf = typeof a;
+      let temporary = false;
+      if (typeOf == "function" || a.$isProxy) { this.register(className = uuid(), a); temporary = true; };
+      if (typeOf == "object") {};
       return {
-        type: a.isProxy ? "proxy" : typeOf,
-        className,
+        type: a.$isProxy ? "proxy" : typeOf,
+        className, temporary,  // for identify own class
+        $className: a.$className,
+        $temporary: a.$temporary,
         data: a
       }
     }));
+  }
+
+  makeTemporary(classNameOrProxy) {
+    let classObj = classNameOrProxy;
+    if (typeof classNameOrProxy == "string" || classNameOrProxy instanceof String) {
+      classObj = this.objects[classNameOrProxy];
+    };
+    if (classObj.$isProxy) {
+      classObj.$temporary = true;
+    };
+    return classNameOrProxy;
   }
 
   sendAnswer(obj) {
@@ -191,24 +209,25 @@ class WSComlink {
       let classObj = this.objects[className];
       let got = undefined, typeOf = "undefined";
 
+      // we also return argument lists for handling temporary objects
       try {
         switch(type) {
           case "call":
             got = methodName ? (await classObj[methodName](...args)) : (await classObj(...args)), typeOf = typeof got;
-            result = { type: typeOf, className, methodName, data: got };
+            result = { type: typeOf, className, methodName, argsRaw, data: got };
             break;
           case "construct":
             this.objects[className = uuid()] = new classObj(...args);
-            result = { type: "object", className, methodName, data: className };
+            result = { type: "object", className, methodName, argsRaw, data: className };
             break;
           case "get":
             got = methodName ? (await classObj[methodName]) : (await classObj), typeOf = typeof got;
             if (typeOf == "function") { this.objects[className = uuid()] = got.bind(classObj); methodName = ""; };
-            result = { type: typeOf, className, methodName, data: got };
+            result = { type: typeOf, className, methodName, argsRaw, data: got };
             break;
           case "set":
             got = (methodName ? (classObj[methodName] = args[0]) : (classObj = args[0])), typeOf = typeof got;
-            result = { type: typeOf, className, methodName, data: got };
+            result = { type: typeOf, className, methodName, argsRaw, data: got };
             break;
           default:
         }
@@ -324,7 +343,7 @@ Please, notify server developers, or try to reload webpage.
     let obj = function(...args) {
       console.error("For Proxy, isn't it?");
     };
-    Object.assign(obj, { className, last: null });
+    Object.assign(obj, { className, last: null, temporary: false });
 
     //
     return (proxy = new Proxy(obj, this.handler));
