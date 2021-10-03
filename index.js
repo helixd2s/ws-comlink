@@ -126,10 +126,9 @@ Object.assign(handlers, {
         // Store it in the cache so that subsequent references to that property
         // will return the same promise.
         target._promise_chain_cache[property] = wrap(target().then(function (result) {
-            if (typeof result != "undefined") {
-              //let value = result[property];
-              //if (typeof value === 'object' || typeof value === 'function') { return wrap(value); }
-              return result;
+            if (typeof result != "undefined" && (typeof result === 'object' || typeof result === 'function')) {
+              //return wrap(result[property]);
+              return result; // TODO correct cache support
             }
             const _p = `"${property}" of "${result}".`;
             throw new TypeError(`Promise chain rejection: Cannot read property ${_p}`);
