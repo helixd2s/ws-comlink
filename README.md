@@ -21,7 +21,7 @@ The main task was to implement objects and classes, as well as method calls, ove
 
 ```js
 import WSComlink from "ws-comlink";
-import WebSocket, {WebSocketServer} from 'ws';
+import {WebSocketServer} from 'ws';
 
 (async()=>{
     class Job {
@@ -59,6 +59,7 @@ import WebSocket, {WebSocketServer} from 'ws';
 
 ```js
 //import WebSocketWrapper from 'ws-wrapper'; // if you used in browser
+import WebSocket from 'ws';
 
 (async()=>{
     const ws = new WebSocket('ws://127.0.0.1:8000/');
