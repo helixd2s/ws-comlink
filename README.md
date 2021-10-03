@@ -1,6 +1,11 @@
 # ws-comlink
 Comlink for WebSockets (WS library)
 
+### Install
+
+`npm install https://github.com/helixd2s/ws-comlink.git`
+
+### Usage
 
 ```js
 import WSComlink from "ws-comlink";
