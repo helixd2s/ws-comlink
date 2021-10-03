@@ -383,7 +383,7 @@ class WSComlink {
     };
   }
 
-  // currently supported single level of route
+  // we use join(".") and split(".") on names, be carefully
   router(classObjOrClassName, methodNameOrPath = "") {
     return new ClassRouter(this.objects, classObjOrClassName, methodNameOrPath);
   }
