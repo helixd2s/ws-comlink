@@ -278,7 +278,7 @@ class ClassHandler {
     //};
     return wrap((async()=>{
       if (target.last) { await target.last; }; target.last = null; // await last action
-      return (await self.call(target.className, args));
+      return (await self.apply(target.className, args));
     })());
   }
 
@@ -406,11 +406,11 @@ class WSComlink {
           case "delete":
             classObj.delete; hasResult = true;
             break;
-          case "call":
-            got = await classObj.value(...args); hasResult = true;
+          case "apply":
+            got = await Reflect.apply(classObj.value, classObj.objParent, args); hasResult = true;
             break;
           case "construct":
-            got = this.makeClass(await new (classObj.value)(...args)); hasResult = true;
+            got = this.makeClass(await Reflect.construct(classObj.value, args)); hasResult = true;
             break;
           case "get":
             got = await classObj.value;
@@ -523,10 +523,10 @@ Please, notify server developers, or try to reload webpage.
     return this.sendRequest({ type: "get", className, methodName });
   }
 
-  call(className, methodName, args) {
+  apply(className, methodName, args) {
     args = Array.isArray(methodName) ? methodName : args;
     methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
-    return this.sendRequest({ type: "call", className, methodName, argsRaw: this.encodeArguments(args) });
+    return this.sendRequest({ type: "apply", className, methodName, argsRaw: this.encodeArguments(args) });
   }
 
   construct(className, args) {
