@@ -293,7 +293,7 @@ class WSComlink {
     let methodName = payload.methodName;
     let typeOf = typeof a;
     let data = a;
-    if (typeOf == "function" || (a && (a.$isProxy || a.$isClass))) { this.register(className = uuid(), a, false); data = className; typeOf = "proxy"; temporary = payload.temporary; methodName = ""; };
+    if (typeOf == "function" || (a && (a.$isProxy || a.$isClass))) { this.register(className = uuid(), a); data = className; typeOf = "proxy"; temporary = payload.temporary; methodName = ""; };
     if (typeOf == "object") {};
     return {
       ...payload,

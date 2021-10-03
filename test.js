@@ -40,15 +40,16 @@ import WebSocket, {WebSocketServer} from 'ws';
 
         let receiver = new WSComlink(ws);
         receiver.on("register", async (changes)=>{
+            if (changes.className == "Job") {
+                let Job = receiver.proxy(changes.className);
+                let jobs = await (new Job());
+                jobs.work = 1;
+                console.log(await jobs.practice);
+                console.log(await jobs.work);
+                console.log(await jobs.doWork(2, callback));
 
-            let Job = receiver.proxy(changes.className);
-            let jobs = await (new Job());
-            jobs.work = 1;
-            console.log(await jobs.practice);
-            console.log(await jobs.work);
-            console.log(await jobs.doWork(2, callback));
-
-            ws.close();
+                ws.close();
+            };
         });
 
     });
