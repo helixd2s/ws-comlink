@@ -202,7 +202,7 @@ class WSComlink {
     let methodName = payload.methodName;
     let typeOf = typeof a;
     let data = a;
-    if (typeOf == "function" || payload.isClass || (a && a.$isProxy)) { this.register(className = uuid(), a, false); data = className; typeOf = "proxy"; temporary = payload.temporary; methodName = ""; };
+    if (typeOf == "function" || (a && (a.$isProxy || a.$isClass))) { this.register(className = uuid(), a, false); data = className; typeOf = "proxy"; temporary = payload.temporary; methodName = ""; };
     if (typeOf == "object") {};
     return {
       ...payload,
@@ -220,6 +220,15 @@ class WSComlink {
 
   encodeArguments(args) {
     return JSON.stringify(args.map((a)=>{ return this.handleArgument(a, {temporary: true}); }));
+  }
+
+  makeClass(classNameOrProxy) {
+    let router = this.router(classNameOrProxy);
+    let classObj = router.value;
+    if (typeof classObj == "object") { 
+      classObj.$isClass = true; 
+    };
+    return classNameOrProxy;
   }
 
   makeTemporary(classNameOrProxy) {
@@ -275,7 +284,6 @@ class WSComlink {
       let callObj = this.calls[id];
       let classObj = this.router(className, methodName);
       let got = undefined;
-      let isClass = false;
       let temporary = false;
       let hasResult = false;
       let exception = undefined;
@@ -288,7 +296,7 @@ class WSComlink {
             got = await classValue(...args); hasResult = true;
             break;
           case "construct":
-            got = await new (classValue)(...args); isClass = true; hasResult = true;
+            got = this.makeClass(await new (classValue)(...args)); hasResult = true;
             break;
           case "get":
             got = classValue;
@@ -317,7 +325,7 @@ ClassName: ${e.className}\n
           id,
           className,
           methodName,
-          result: (result = this.handleArgument(got, {className, methodName, argsRaw, isClass, classObj, temporary }))
+          result: (result = this.handleArgument(got, {className, methodName, argsRaw, classObj, temporary }))
         });
       }
 
