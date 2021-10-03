@@ -232,21 +232,23 @@ class ClassHandler {
       })());
     }
   }
-  async set (target, name, value) {
+  set (target, name, value) {
     let self = this.self;
     if (name == "$temporary") { target.temporary = !!value; } else
     {
-      if (target.last) { await target.last; }; target.last = null; // await last action
-      await (target.last = (self.set(target.className, name, value)));
+      return wrap((async()=>{
+        if (target.last) { await target.last; }; target.last = null; // await last action
+        return await (target.last = (self.set(target.className, name, value)));
+      })());
     }
   }
   construct(target, args, newTarget) {
     let self = this.self;
-    return wrap(new Promise(async (resolve, reject)=>{
+    return wrap((async()=>{
       console.warn("we returned a promise to class, please wait it");
       if (target.last) { await target.last; }; target.last = null; // await last action
-      resolve(await self.construct(target.className, args));
-    }));
+      return (await self.construct(target.className, args));
+    })());
   }
   apply(target, thisArg, args) {
     let self = this.self;
