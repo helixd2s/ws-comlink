@@ -186,7 +186,7 @@ class ClassRouter {
     let obj = this.obj;
     if (typeof obj == "object") { Object.assign(obj, a); } else  
     if (typeof this.objOrName == "string") {
-      if (typeof a == "undefined") { delete this.parent[this.objOrName]; } else { Reflect.set(this.parent || {}, this.objOrName, a); };
+      if (typeof a == "undefined") { Reflect.deleteProperty(this.parent || {}, this.objOrName); } else { Reflect.set(this.parent || {}, this.objOrName, a); };
     } else {
       console.error("class is not assignable, no context");
     }
@@ -197,6 +197,14 @@ class ClassRouter {
       return (new ClassRouter(this.obj, splitPath.shift(), splitPath.join("."))).objParent;
     } else {
       return this.parent;
+    }
+  }
+  get delete() {
+    if (typeof this.methodNameOrPath == "string" && this.methodNameOrPath) {
+      let splitPath = this.methodNameOrPath.split(".");
+      (new ClassRouter(this.obj, splitPath.shift(), splitPath.join("."))).delete;
+    } else {
+      this.obj = undefined;
     }
   }
   get value() {
@@ -233,6 +241,15 @@ class ClassHandler {
       return wrap((async()=>{
         if (target.last) { await target.last; }; target.last = null;
         return (await self.get(target.className, name));
+      })());
+    }
+  }
+  deleteProperty (target, name) {
+    let self = this.self;
+    {
+      return wrap((async()=>{
+        if (target.last) { await target.last; }; target.last = null;
+        return await (target.last = self.delete(target.className, name));
       })());
     }
   }
@@ -382,19 +399,21 @@ class WSComlink {
       let temporary = false;
       let hasResult = false;
       let exception = undefined;
-      let classValue = classObj.value;
 
       // we also return argument lists for handling temporary objects
       try {
         switch(type) {
+          case "delete":
+            classObj.delete; hasResult = true;
+            break;
           case "call":
-            got = await classValue(...args); hasResult = true;
+            got = await classObj.value(...args); hasResult = true;
             break;
           case "construct":
-            got = this.makeClass(await new (classValue)(...args)); hasResult = true;
+            got = this.makeClass(await new (classObj.value)(...args)); hasResult = true;
             break;
           case "get":
-            got = await classValue;
+            got = await classObj.value;
             if (typeof got == "function") { got = got.bind(classObj.objParent); }; hasResult = true;
             break;
           case "set":
@@ -492,6 +511,11 @@ Please, notify server developers, or try to reload webpage.
     //value = !(typeof methodName == "string" || methodName instanceof String) ? methodName : value;
     //methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
     return this.sendRequest({ type: "set", className, methodName, argsRaw: this.encodeArguments([value]) });
+  }
+
+  delete(className, methodName) {
+    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
+    return this.sendRequest({ type: "delete", className, methodName });
   }
 
   get(className, methodName) {
