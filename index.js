@@ -149,8 +149,8 @@ handlers = {
 // Make sure all other references to the proxied object refer to the promise itself,
 // not the function wrapping it
 Object.getOwnPropertyNames(Reflect).forEach(function (handler) {
-    handlers[handler] = handlers[handler] || function (target, arg1, arg2, arg3) {
-        return Reflect[handler](target(), arg1, arg2, arg3);
+    handlers[handler] = handlers[handler] || function (target, ...args) {
+        return Reflect[handler](target(), ...args);
     };
 });
 
