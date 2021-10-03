@@ -351,7 +351,7 @@ class WSComlink {
     });
 
     // handle type
-    return (async()=>{ return this.handleResult(await this.calls[id].promise); })();
+    return wrap((async()=>{ return this.handleResult(await this.calls[id].promise); })());
   }
 
   register(name, object, notify = true) {
