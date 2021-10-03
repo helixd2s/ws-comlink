@@ -234,7 +234,7 @@ class ClassHandler {
   }
   set (target, name, value) {
     let self = this.self;
-    if (name == "$temporary") { target.temporary = !!value; } else
+    if (name == "$temporary") { return (target.temporary = !!value); } else
     {
       return wrap((async()=>{
         if (target.last) { await target.last; }; target.last = null; // await last action
