@@ -107,9 +107,13 @@ Object.assign(handlers, {
             }
             return target()[property];
         }
+
+        // 
+        let handleCache = async (result)=>{ return result[property]; };
+
         // If the property has a value in the cache, use that value.
         if (Object.prototype.hasOwnProperty.call(target._promise_chain_cache, property)) {
-            return target._promise_chain_cache[property];
+            return target._promise_chain_cache[property].then(handleCache);
         }
         // If the Promise library allows synchronous inspection (bluebird, etc.),
         // ensure that properties of resolved
@@ -122,13 +126,15 @@ Object.assign(handlers, {
         // Store it in the cache so that subsequent references to that property
         // will return the same promise.
         target._promise_chain_cache[property] = wrap(target().then(function (result) {
-            if (result && (typeof result === 'object' || typeof result === 'function')) {
-                return wrap(result[property]);
+            if (typeof result != "undefined") {
+              //let value = result[property];
+              //if (typeof value === 'object' || typeof value === 'function') { return wrap(value); }
+              return result;
             }
             const _p = `"${property}" of "${result}".`;
             throw new TypeError(`Promise chain rejection: Cannot read property ${_p}`);
         }));
-        return target._promise_chain_cache[property];
+        return target._promise_chain_cache[property].then(handleCache);
     },
     apply: function (target, thisArg, args) {
         // If the wrapped Promise is called, return a Promise that calls the result
