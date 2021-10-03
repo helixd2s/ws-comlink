@@ -46,7 +46,7 @@ import WebSocket, {WebSocketServer} from 'ws';
             jobs.work = 1;
             console.log(await jobs.practice);
             console.log(await jobs.work);
-            console.log(await (await jobs.doWork)(2, callback));
+            console.log(await jobs.doWork(2, callback));
 
             ws.close();
         });
