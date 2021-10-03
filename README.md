@@ -43,8 +43,7 @@ import {WebSocketServer} from 'ws';
     const wss = new WebSocketServer({ port: 8000 });
     wss.on('connection', function connection(ws) {
         let transmitter = new WSComlink(ws);
-        let job = new Job();
-        
+
         // add class into registry
         transmitter.register("Job", Job);
     });
