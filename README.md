@@ -41,10 +41,22 @@ import {WebSocketServer} from 'ws';
     };
 
     const wss = new WebSocketServer({ port: 8000 });
-    wss.on('connection', function connection(ws) {
+    wss.on('connection', async function connection(ws) {
         let transmitter = new WSComlink(ws);
 
-        // add class into registry
+        // promise test
+        let answer = {};
+        let promise = new Promise((res,rej)=>{
+            answer.resolve = res;
+            answer.reject = rej;
+        });
+        transmitter.register("answer", answer);
+
+        // wait answer from client
+        console.log(await (promise));
+
+
+        // class test
         transmitter.register("Job", Job);
     });
 
@@ -70,6 +82,14 @@ import WebSocket from 'ws';
 
         let receiver = new WSComlink(ws);
         receiver.on("register", async (changes)=>{
+
+            // answer to promise
+            if (changes.className == "answer") {
+                let answer = receiver.proxy(changes.className);
+                answer.resolve("Got answer for promise");
+            }
+            
+            // test class
             if (changes.className == "Job") {
                 // get class constructor
                 let Job = receiver.proxy(changes.className);
@@ -92,9 +112,6 @@ import WebSocket from 'ws';
                 // try to delete property
                 delete jobs.work;
                 console.log(await jobs.work);
-
-                // IDK
-                ws.close();
             };
         });
 

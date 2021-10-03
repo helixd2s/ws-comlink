@@ -290,7 +290,7 @@ class ClassHandler {
 }
 
 class WSComlink {
-  constructor(connection) {
+  constructor(connection, observe = true) {
     this.connection = connection;
     this.objects = {};
     this.calls = {};
@@ -298,7 +298,7 @@ class WSComlink {
     this.watchers = {
       register: []
     };
-    this.observe();
+    if (observe) { this.observe(); };
   }
 
   handleResult(a) {
