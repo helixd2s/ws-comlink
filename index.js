@@ -299,7 +299,7 @@ class WSComlink {
             got = this.makeClass(await new (classValue)(...args)); hasResult = true;
             break;
           case "get":
-            got = classValue;
+            got = await classValue;
             if (typeof got == "function") { got = got.bind(classObj.objParent); }; hasResult = true;
             break;
           case "set":
