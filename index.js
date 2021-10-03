@@ -68,7 +68,7 @@ function getAllSetters(toCheck) {
 
 
 /* WRAP PROMISE */
-let handlers;
+let handlers = {};
 const wrap = function (target) {
     if (typeof target === 'object' && target && typeof target.then === 'function') {
         // The target needs to be stored internally as a function, so that it can use
@@ -83,7 +83,7 @@ const wrap = function (target) {
 if (typeof Reflect === 'undefined') {
     require('harmony-reflect');
 }
-handlers = {
+Object.assign(handlers, {
     get: function (target, property) {
         if (property === 'inspect') {
             return function () { return '[chainable Promise]'; };
@@ -145,7 +145,7 @@ handlers = {
             return wrap(Reflect.construct(result, args));
         }));
     }
-};
+});
 // Make sure all other references to the proxied object refer to the promise itself,
 // not the function wrapping it
 Object.getOwnPropertyNames(Reflect).forEach(function (handler) {
