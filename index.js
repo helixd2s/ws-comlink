@@ -65,6 +65,65 @@ function getAllSetters(toCheck) {
 }
 */
 
+
+
+class ClassRouter {
+  constructor(parent, objOrName = "", methodNameOrPath = "") {
+    this.parent = parent;
+    if (typeof methodNameOrPath == "string" && methodNameOrPath) {
+      // TODO: corrent path
+      this.objOrName = objOrName;
+      this.methodNameOrPath = methodNameOrPath;
+    } else 
+    if (typeof objOrName == "string" && objOrName) {
+      // set true path
+      let splitPath = objOrName.split(".");
+      this.objOrName = splitPath.shift();
+      this.methodNameOrPath = splitPath.join(".");
+    } else {
+      // default path
+      this.objOrName = objOrName || "";
+      this.methodNameOrPath = methodNameOrPath;
+    }
+  }
+  get obj() {
+    return (typeof this.objOrName == "string" && this.objOrName) ? Reflect.get(this.parent || {}, this.objOrName) : this.objOrName;
+  }
+  set obj(a) {
+    let obj = this.obj;
+    if (typeof obj == "object") { Object.assign(obj, a); } else  
+    if (typeof this.objOrName == "string") {
+      if (typeof a == "undefined") { delete this.parent[this.objOrName]; } else { Reflect.set(this.parent || {}, this.objOrName, a); };
+    } else {
+      console.error("class is not assignable, no context");
+    }
+  }
+  get objParent() {
+    if (typeof this.methodNameOrPath == "string" && this.methodNameOrPath) {
+      let splitPath = this.methodNameOrPath.split(".");
+      return (new ClassRouter(this.obj, splitPath.shift(), splitPath.join("."))).objParent;
+    } else {
+      return this.parent;
+    }
+  }
+  get value() {
+    if (typeof this.methodNameOrPath == "string" && this.methodNameOrPath) {
+      let splitPath = this.methodNameOrPath.split(".");
+      return (new ClassRouter(this.obj, splitPath.shift(), splitPath.join("."))).value;
+    } else {
+      return this.obj;
+    }
+  }
+  set value(a) {
+    if (typeof this.methodNameOrPath == "string" && this.methodNameOrPath) {
+      let splitPath = this.methodNameOrPath.split(".");
+      (new ClassRouter(this.obj, splitPath.shift(), splitPath.join("."))).value = a;
+    } else {
+      this.obj = a;
+    }
+  }
+};
+
 class ClassHandler {
   constructor(self) {
     this.self = self;
@@ -97,8 +156,7 @@ class ClassHandler {
     return new Promise(async (resolve, reject)=>{
       console.warn("we returned a promise to class, please wait it");
       if (target.last) { await target.last; }; target.last = null; // await last action
-      let className = await self.construct(target.className, args);
-      resolve(self.proxy(className));
+      resolve(await self.construct(target.className, args));
     });
     //console.warn("please, use `class.promise` for get class access");
     //return { promise: (await self.wrapClass(await self.construct(target.className, args))) };
@@ -126,41 +184,48 @@ class WSComlink {
     this.observe();
   }
 
+  handleResult(a) {
+    let data = a.data;
+    let classNameRouter = this.router(a.className);
+    let $classNameRouter = this.router(a.$className);
+    let classNameValue = classNameRouter.value;
+    let $classNameValue = $classNameRouter.value;
+    if (a.temporary && classNameValue) { data = classNameValue; classNameRouter.value = undefined; } else // delete temporary and make direct call (non-native proxy)
+    if ((a.type == "function" || a.type == "proxy") && $classNameValue) { data = $classNameValue; if (a.$temporary) { $classNameRouter.value = undefined; }; } else  // identify, and make a direct call (native proxy)
+    if ( a.type == "function" || a.type == "proxy") { data = this.proxy(a.className); }; // make proxy for functions and constructor's (non-native proxy)
+    return data;
+  }
+
+  handleArgument(a, payload) {
+    let className = payload.className;
+    let temporary = payload.temporary;
+    let methodName = payload.methodName;
+    let typeOf = typeof a;
+    let data = a;
+    if (typeOf == "function" || payload.isClass || (a && a.$isProxy)) { this.register(className = uuid(), a, false); data = className; typeOf = "proxy"; temporary = payload.temporary; methodName = ""; };
+    if (typeOf == "object") {};
+    return {
+      ...payload,
+      type: a && a.$isProxy ? "proxy" : typeOf,
+      className, temporary, methodName,  // for identify own class
+      $className: a && a.$className,
+      $temporary: a && a.$temporary,
+      data
+    }
+  }
+
   decodeArguments(args) {
-    return JSON.parse(args).map((a)=>{
-      let data = a.data;
-      if (a.temporary && this.objects[a.className]) { data = this.objects[a.className]; delete this.objects[a.className]; } else // delete temporary and make direct call (non-native proxy)
-      if ((a.type == "function" || a.type == "proxy") && this.objects[a.$className]) { data = this.objects[a.$className]; if (a.$temporary) { delete this.objects[a.$className]; }; } else  // identify, and make a direct call (native proxy)
-      if ( a.type == "function" || a.type == "proxy") { data = this.proxy(a.className); }; // make proxy for functions and constructor's (non-native proxy)
-      return data;
-    });
+    return JSON.parse(args).map((a)=>{ return this.handleResult(a); });
   }
 
   encodeArguments(args) {
-    return JSON.stringify(args.map((a)=>{
-      let className = "";
-      let typeOf = typeof a;
-      let temporary = false;
-      if (typeOf == "function" || a.$isProxy) { this.register(className = uuid(), a); temporary = true; };
-      if (typeOf == "object") {};
-      return {
-        type: a.$isProxy ? "proxy" : typeOf,
-        className, temporary,  // for identify own class
-        $className: a.$className,
-        $temporary: a.$temporary,
-        data: a
-      }
-    }));
+    return JSON.stringify(args.map((a)=>{ return this.handleArgument(a, {temporary: true}); }));
   }
 
   makeTemporary(classNameOrProxy) {
-    let classObj = classNameOrProxy;
-    if (typeof classNameOrProxy == "string" || classNameOrProxy instanceof String) {
-      classObj = this.objects[classNameOrProxy];
-    };
-    if (classObj.$isProxy) {
-      classObj.$temporary = true;
-    };
+    let router = this.router(classNameOrProxy);
+    let proxy = router.value;
+    if (proxy.$isProxy) { proxy.$temporary = true; };
     return classNameOrProxy;
   }
 
@@ -182,22 +247,24 @@ class WSComlink {
     });
 
     // handle type
-    return (async()=>{
-      let result = await this.calls[id].promise;
-      if (result.type == "function") {
-        return this.proxy(result.className);//(...args) => { return this.call(result.className, result.methodName, args); };
-      } else {
-        return result.data;
-      }
-    })();
+    return (async()=>{ return this.handleResult(await this.calls[id].promise); })();
   }
 
-  register(name, object) {
+  register(name, object, notify = true) {
     this.objects[name] = object;
     let id = uuid();
-    this.sendAnswer({ id, type: "register", result: {
-      className: name
-    } });
+    if (notify) {
+      this.sendAnswer({
+        id, type: "register", result: {
+          className: name
+        }
+      });
+    };
+  }
+
+  // currently supported single level of route
+  router(classObjOrClassName, methodNameOrPath = "") {
+    return new ClassRouter(this.objects, classObjOrClassName, methodNameOrPath);
   }
 
   observe() {
@@ -206,32 +273,34 @@ class WSComlink {
       let {type, id, className, methodName, argsRaw, result, error} = JSON.parse(json);
       let args = argsRaw ? this.decodeArguments(argsRaw) : null;
       let callObj = this.calls[id];
-      let classObj = this.objects[className];
-      let got = undefined, typeOf = "undefined";
+      let classObj = this.router(className, methodName);
+      let got = undefined;
+      let isClass = false;
+      let temporary = false;
+      let hasResult = false;
+      let exception = undefined;
+      let classValue = classObj.value;
 
       // we also return argument lists for handling temporary objects
       try {
         switch(type) {
           case "call":
-            got = methodName ? (await classObj[methodName](...args)) : (await classObj(...args)), typeOf = typeof got;
-            result = { type: typeOf, className, methodName, argsRaw, data: got };
+            got = await classValue(...args); hasResult = true;
             break;
           case "construct":
-            this.objects[className = uuid()] = new classObj(...args);
-            result = { type: "object", className, methodName, argsRaw, data: className };
+            got = await new (classValue)(...args); isClass = true; hasResult = true;
             break;
           case "get":
-            got = methodName ? (await classObj[methodName]) : (await classObj), typeOf = typeof got;
-            if (typeOf == "function") { this.objects[className = uuid()] = got.bind(classObj); methodName = ""; };
-            result = { type: typeOf, className, methodName, argsRaw, data: got };
+            got = classValue;
+            if (typeof got == "function") { got = got.bind(classObj.objParent); }; hasResult = true;
             break;
           case "set":
-            got = (methodName ? (classObj[methodName] = args[0]) : (classObj = args[0])), typeOf = typeof got;
-            result = { type: typeOf, className, methodName, argsRaw, data: got };
+            got = (classObj.value = args[0]); hasResult = true;
             break;
           default:
         }
       } catch(e) {
+        exception = e;
         error = `
 Message: ${e.message}\n
 Filename: ${e.fileName}\n
@@ -239,22 +308,23 @@ LineNumber: ${e.lineNumber}\n
 MethodName: ${e.methodName}\n
 ClassName: ${e.className}\n
 `;
-        console.error(`ERROR!\n${error}`);
       }
 
       // send result
-      if (typeof result != "undefined") {
+      if (hasResult) {
         this.sendAnswer({
           type: "result",
           id,
           className,
           methodName,
-          result: result
+          result: (result = this.handleArgument(got, {className, methodName, argsRaw, isClass, classObj, temporary }))
         });
       }
 
       //
       if (typeof error != "undefined") {
+        //throw exception;
+        console.error(`ERROR!\n${error}`);
         this.sendAnswer({
           type: "error",
           id,
@@ -337,16 +407,12 @@ Please, notify server developers, or try to reload webpage.
   }
 
   proxy(className) {
-    let proxy = null;
-
     // make promise for proxy
     let obj = function(...args) {
       console.error("For Proxy, isn't it?");
     };
     Object.assign(obj, { className, last: null, temporary: false });
-
-    //
-    return (proxy = new Proxy(obj, this.handler));
+    return (new Proxy(obj, this.handler));
   }
 }
 
