@@ -109,7 +109,7 @@ Object.assign(handlers, {
         }
 
         // 
-        let handleCache = async (result)=>{ return result[property]; };
+        let handleCache = async (result)=>{ return (await result[property]); };
 
         // If the property has a value in the cache, use that value.
         if (Object.prototype.hasOwnProperty.call(target._promise_chain_cache, property)) {
