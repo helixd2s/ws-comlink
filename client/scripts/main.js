@@ -1,22 +1,30 @@
 import WSComlink from "../../index.js";
 import WebSocketWrapper from 'ws-wrapper';
 
-const ws = new WebSocketWrapper(new WebSocket('ws://127.0.0.1:8000/'));
+// 
+(async()=>{
+    const ws = new WebSocketWrapper(new WebSocket('ws://127.0.0.1:8000/'));
+    ws.on("open", ()=>{
 
-ws.on("open", ()=>{
+        function callback(a) {
+            console.log("Called with: " + a);
+        }
 
-    console.log("opened");
+        let receiver = new WSComlink(ws);
+        receiver.on("register", async (changes)=>{
+            if (changes.className == "Job") {
+                let Job = receiver.proxy(changes.className);
+                let jobs = new Job();
+                jobs.work = 1;
+                console.log(await jobs.practice);
+                console.log(await jobs.work);
+                console.log(await jobs.doWork(2, callback));
+                delete jobs.work;
+                console.log(await jobs.work);
 
-    let receiver = new WSComlink(ws);
-    receiver.on("register", async (changes)=>{
-
-        let Job = await receiver.proxy(changes.className);
-        let jobs = await (new Job());
-        jobs.work = 1;
-        console.log(await jobs.practice);
-        console.log(await jobs.work);
-        console.log(await (await jobs.doWork)(2));
+                ws.close();
+            };
+        });
 
     });
-
-});
+})();
