@@ -236,6 +236,23 @@ class ClassHandler {
   }
   get (target, name) {
     let self = this.self;
+    if (name == "call") { return (thisArg, ...args)=>{
+      return wrap((async()=>{
+        if (target.last) { await target.last; }; target.last = null; // await last action
+        return (await self.apply(target.className, null, args, thisArg));
+      })());
+    }; } else
+    if (name == "apply") { return (thisArg, args)=>{
+      return wrap((async()=>{
+        if (target.last) { await target.last; }; target.last = null; // await last action
+        return (await self.apply(target.className, null, args, thisArg));
+      })());
+    }; } else
+    if (name == "bind") { return (thisArg, ...args)=>{ return ()=>{ return wrap((async()=>{
+        if (target.last) { await target.last; }; target.last = null; // await last action
+        return (await self.apply(target.className, null, args, thisArg));
+      })());
+    }}; } else
     if (name == "_last") { return target.last; } else
     if (name == "then") { return target.then && typeof target.then == "function" ? target.then.bind(target) : null; } else
     if (name == "catch") { return target.catch && typeof target.catch == "function" ? target.catch.bind(target) : null; } else
@@ -284,7 +301,7 @@ class ClassHandler {
     //};
     return wrap((async()=>{
       if (target.last) { await target.last; }; target.last = null; // await last action
-      return (await self.apply(target.className, args));
+      return (await self.apply(target.className, null, args));
     })());
   }
 
@@ -304,9 +321,8 @@ class WSComlink {
 
   handleResult(a) {
     let data = a.data;
-    let $classNameRouter = this.router(a.$className);
-    let $classNameValue = $classNameRouter.value;
     if (a.type == "proxy") {
+      let $classNameValue = this.router(a.$className).value;
       if ($classNameValue) {
         // identity as own, and make a direct call (native proxy)
         data = $classNameValue; if (a.$temporary) { $classNameRouter.value = undefined; };
@@ -324,16 +340,15 @@ class WSComlink {
     let typeOf = typeof a;
     let data = a;
     if (typeOf == "function" || (a && (a.$isProxy || a.$isClass))) { 
-      this.register(className = uuid(), a, !(temporary = payload.temporary)); 
-      data = className;
+      this.register(data = uuid(), a, !payload.temporary);
       typeOf = "proxy";
     };
     if (typeOf == "object") {};
     return {
       ...payload,
       type: typeOf,
-      $className: className,
-      $temporary: temporary,
+      temporary: payload.temporary, // for post-handlers
+      $className: className, $temporary: temporary, // for argument handlers
       data
     }
   }
@@ -403,8 +418,9 @@ class WSComlink {
   observe() {
     this.connection.on("message", async (message, isBinary) => {
       let json = message.data ? message.data : message.toString('utf8');
-      let {type, id, className, methodName, argsRaw, result, error} = JSON.parse(json);
+      let {type, thisArgRaw, id, className, methodName, argsRaw, result, error} = JSON.parse(json);
       let args = argsRaw ? this.decodeArguments(argsRaw) : null;
+      let thisArg = thisArgRaw ? (this.handleResult(thisArgRaw)) : null;
       let callObj = this.calls[id];
       let classObj = this.router(className, methodName);
       let got = undefined;
@@ -419,14 +435,14 @@ class WSComlink {
             classObj.delete; hasResult = true;
             break;
           case "apply":
-            got = await Reflect.apply(classObj.value, classObj.objParent, args); hasResult = true;
+            got = await Reflect.apply(classObj.value, thisArg || classObj.objParent, args); hasResult = true;
             break;
           case "construct":
             got = this.makeClass(await Reflect.construct(classObj.value, args)); hasResult = true;
             break;
           case "get":
             got = await classObj.value;
-            if (typeof got == "function") { got = got.bind(classObj.objParent); }; hasResult = true;
+            hasResult = true;
             break;
           case "set":
             got = (classObj.value = args[0]); hasResult = true;
@@ -535,10 +551,11 @@ Please, notify server developers, or try to reload webpage.
     return this.sendRequest({ type: "get", className, methodName });
   }
 
-  apply(className, methodName, args) {
+  apply(className, methodName, args, thisArg) {
     args = Array.isArray(methodName) ? methodName : args;
     methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
-    return this.sendRequest({ type: "apply", className, methodName, argsRaw: this.encodeArguments(args) });
+    let thisArgRaw = this.handleArgument(this.makeClass(thisArg));
+    return this.sendRequest({ type: "apply", className, methodName, thisArgRaw, argsRaw: this.encodeArguments(args) });
   }
 
   construct(className, args) {

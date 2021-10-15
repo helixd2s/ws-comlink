@@ -11,7 +11,7 @@ import WebSocket, {WebSocketServer} from 'ws';
             return 2;
         }
 
-        async doWork(value, callback) {
+        async doWork(value) {
             // you can call function proxy
             //await callback(this.work);
             return (this.work + value);
@@ -32,7 +32,6 @@ import WebSocket, {WebSocketServer} from 'ws';
 
         // wait answer from client
         console.log(await (promise));
-
 
         // class test
         transmitter.register("Job", Job);
@@ -66,7 +65,7 @@ import WebSocket, {WebSocketServer} from 'ws';
                 let Job = receiver.proxy(changes.className);
 
                 // try to construct
-                let jobs = new Job();
+                let jobs = await new Job();
 
                 // try to set
                 jobs.work = 1;
@@ -78,7 +77,7 @@ import WebSocket, {WebSocketServer} from 'ws';
                 console.log(await jobs.work);
 
                 // try call function
-                console.log(await jobs.doWork(2, callback));
+                console.log(await (jobs.doWork).call(jobs, 2));
 
                 // try to delete property
                 delete jobs.work;
