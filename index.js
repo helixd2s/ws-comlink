@@ -240,6 +240,7 @@ class ClassHandler {
     if (name == "then") { return target.then && typeof target.then == "function" ? target.then.bind(target) : null; } else
     if (name == "catch") { return target.catch && typeof target.catch == "function" ? target.catch.bind(target) : null; } else
     if (name == "$isProxy") { return true; } else
+    if (name == "$origin") { return target.origin; } else
     if (name == "$className") { return target.className; } else
     if (name == "$temporary") { return target.temporary; } else
     {
@@ -303,30 +304,36 @@ class WSComlink {
 
   handleResult(a) {
     let data = a.data;
-    let classNameRouter = this.router(a.className);
     let $classNameRouter = this.router(a.$className);
-    let classNameValue = classNameRouter.value;
     let $classNameValue = $classNameRouter.value;
-    if (a.temporary && classNameValue) { data = classNameValue; classNameRouter.value = undefined; } else // delete temporary and make direct call (non-native proxy)
-    if ((a.type == "function" || a.type == "proxy") && $classNameValue) { data = $classNameValue; if (a.$temporary) { $classNameRouter.value = undefined; }; } else  // identify, and make a direct call (native proxy)
-    if ( a.type == "function" || a.type == "proxy") { data = this.proxy(a.className); }; // make proxy for functions and constructor's (non-native proxy)
+    if (a.type == "proxy") {
+      if ($classNameValue) {
+        // identity as own, and make a direct call (native proxy)
+        data = $classNameValue; if (a.$temporary) { $classNameRouter.value = undefined; };
+      } else {
+        // it probably is foreign proxy
+        data = this.proxy(data, {className: a.$className, temporary: a.$temporary}); // set proxy with origin
+      }
+    }
     return data;
   }
 
-  handleArgument(a, payload) {
-    let className = payload.className;
-    let temporary = payload.temporary;
-    let methodName = payload.methodName;
+  handleArgument(a, payload={}) {
+    let className = a && a.$origin ? a.$origin.className : payload.className;
+    let temporary = a && a.$origin ? a.$origin.temporary : payload.temporary;
     let typeOf = typeof a;
     let data = a;
-    if (typeOf == "function" || (a && (a.$isProxy || a.$isClass))) { this.register(className = uuid(), a, !payload.temporary); data = className; typeOf = "proxy"; temporary = payload.temporary; methodName = ""; };
+    if (typeOf == "function" || (a && (a.$isProxy || a.$isClass))) { 
+      this.register(className = uuid(), a, !(temporary = payload.temporary)); 
+      data = className;
+      typeOf = "proxy";
+    };
     if (typeOf == "object") {};
     return {
       ...payload,
-      type: a && a.$isProxy ? "proxy" : typeOf,
-      className, temporary, methodName,  // for identify own class
-      $className: a && a.$className,
-      $temporary: a && a.$temporary,
+      type: typeOf,
+      $className: className,
+      $temporary: temporary,
       data
     }
   }
@@ -444,7 +451,7 @@ ClassName: ${e.className}\n
           id,
           className,
           methodName,
-          result: (result = this.handleArgument(got, {className, methodName, argsRaw, classObj, temporary }))
+          result: (result = this.handleArgument(got))
         });
       }
 
@@ -538,12 +545,12 @@ Please, notify server developers, or try to reload webpage.
     return this.sendRequest({ type: "construct", className, argsRaw: this.encodeArguments(args) });
   }
 
-  proxy(className) {
+  proxy(className, origin={}) {
     // make promise for proxy
     let obj = function(...args) {
       console.error("For Proxy, isn't it?");
     };
-    Object.assign(obj, { className, last: null, temporary: false });
+    Object.assign(obj, { origin: {...origin, className: origin.className||className}, className, last: null, temporary: false });
     return (new Proxy(obj, this.handler));
   }
 }
