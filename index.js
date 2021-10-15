@@ -358,7 +358,7 @@ class WSComlink {
   makeTemporary(classNameOrProxy) {
     let router = this.router(classNameOrProxy);
     let proxy = router.value;
-    if (proxy.$isProxy) { proxy.$temporary = true; };
+    if (proxy.$isProxy) { proxy.origin.$temporary = true; };
     return classNameOrProxy;
   }
 
