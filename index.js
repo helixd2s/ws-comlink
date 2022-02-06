@@ -305,18 +305,42 @@ class ClassHandler {
     })());
   }
 
+
+
 }
 
-class WSComlink {
-  constructor(connection, observe = true) {
-    this.connection = connection;
+class Protocol {
+  constructor(handler = null) {
+    this.handler = handler;
     this.objects = {};
     this.calls = {};
-    this.handler = new ClassHandler(this);
     this.watchers = {
       register: []
     };
-    if (observe) { this.observe(); };
+  }
+
+  setClassHandler(handler) {
+    return (this.handler = handler);
+  };
+
+  on(name, cb) {
+    this.watchers[name].push(cb);
+  }
+
+  setObject(name, object) {
+    return (this.objects[name] = object);
+  }
+
+  getObject(name) {
+    return this.objects[name];
+  }
+
+  setCall(name, call) {
+    return (this.calls[name] = call);
+  }
+
+  getCall(name) {
+    return this.calls[name];
   }
 
   handleResult(a) {
@@ -339,7 +363,7 @@ class WSComlink {
     let temporary = a && a.$origin ? a.$origin.temporary : payload.temporary;
     let typeOf = typeof a;
     let data = a;
-    if (typeOf == "function" || (a && (a.$isProxy || a.$isClass))) { 
+    if (typeOf == "function" || (a && (a.$isProxy || a.$isClass))) {
       this.register(data = uuid(), a, !payload.temporary);
       typeOf = "proxy";
     };
@@ -364,8 +388,8 @@ class WSComlink {
   makeClass(classNameOrProxy) {
     let router = this.router(classNameOrProxy);
     let classObj = router.value;
-    if (typeof classObj == "object") { 
-      classObj.$isClass = true; 
+    if (typeof classObj == "object") {
+      classObj.$isClass = true;
     };
     return classNameOrProxy;
   }
@@ -377,37 +401,13 @@ class WSComlink {
     return classNameOrProxy;
   }
 
-  sendAnswer(obj) {
-    this.connection.send(JSON.stringify(obj));
-  }
-
-  sendRequest(obj) {
-    let id = uuid();
-    this.connection.send(JSON.stringify(Object.assign(obj, { id })));
-    this.calls[id] = obj;
-
-    //
-    Object.assign(this.calls[id], {
-      id, promise: new Promise((resolve, reject)=>{
-        this.calls[id].resolve = (...args) => { resolve(...args); delete this.calls[id]; };
-        this.calls[id].reject = (...args) => { reject(...args); delete this.calls[id]; };
-      })
-    });
-
-    // handle type
-    return wrap((async()=>{ return this.handleResult(await this.calls[id].promise); })());
-  }
-
-  register(name, object, notify = true) {
-    this.objects[name] = object;
-    let id = uuid();
-    if (notify) {
-      this.sendAnswer({
-        id, type: "register", result: {
-          className: name
-        }
-      });
+  proxy(className, origin={}) {
+    // make promise for proxy
+    let obj = function(...args) {
+      console.error("For Proxy, isn't it?");
     };
+    Object.assign(obj, { origin: {...origin, className: origin.className||className}, className, last: null, temporary: false });
+    return (new Proxy(obj, this.handler));
   }
 
   // we use join(".") and split(".") on names, be carefully
@@ -415,83 +415,69 @@ class WSComlink {
     return new ClassRouter(this.objects, classObjOrClassName, methodNameOrPath);
   }
 
-  observe() {
-    this.connection.on("message", async (message, isBinary) => {
-      let json = message.data ? message.data : message.toString('utf8');
-      let {type, thisArgRaw, id, className, methodName, argsRaw, result, error} = JSON.parse(json);
-      let args = argsRaw ? this.decodeArguments(argsRaw) : null;
-      let thisArg = thisArgRaw ? (this.handleResult(thisArgRaw)) : null;
-      let callObj = this.calls[id];
-      let classObj = this.router(className, methodName);
-      let got = undefined;
-      let temporary = false;
-      let hasResult = false;
-      let exception = undefined;
+  register(className, object, notify = true) {
+    this.objects[className] = object;
+    return {type: "register", result: {className}};
+  };
 
-      // we also return argument lists for handling temporary objects
-      try {
-        switch(type) {
-          case "delete":
-            classObj.delete; hasResult = true;
-            break;
-          case "apply":
-            got = await Reflect.apply(classObj.value, thisArg || classObj.objParent, args); hasResult = true;
-            break;
-          case "construct":
-            got = this.makeClass(await Reflect.construct(classObj.value, args)); hasResult = true;
-            break;
-          case "get":
-            got = await classObj.value;
-            hasResult = true;
-            break;
-          case "set":
-            got = (classObj.value = args[0]); hasResult = true;
-            break;
-          default:
-        }
-      } catch(e) {
-        exception = e;
-        error = `
+  async handleEvent(json) {
+    let {type, thisArgRaw, id, className, methodName, argsRaw, result, error, hasResult} = JSON.parse(json);
+    let args = argsRaw ? this.decodeArguments(argsRaw) : null;
+    let thisArg = thisArgRaw ? (this.handleResult(thisArgRaw)) : null;
+    let callObj = this.calls[id];
+    let classObj = this.router(className, methodName);
+    let got = undefined;
+    let temporary = false;
+    let exception = undefined;
+
+    // we also return argument lists for handling temporary objects
+    try {
+      switch(type) {
+        case "delete":
+          classObj.delete; hasResult = true;
+          break;
+        case "apply":
+          got = await Reflect.apply(classObj.value, thisArg || classObj.objParent, args); hasResult = true;
+          break;
+        case "construct":
+          got = this.makeClass(await Reflect.construct(classObj.value, args)); hasResult = true;
+          break;
+        case "get":
+          got = await classObj.value; hasResult = true;
+          break;
+        case "set":
+          got = (classObj.value = args[0]); hasResult = true;
+          break;
+        case "result":
+          if (hasResult) {
+            callObj.resolve(this.handleResult(result));
+          } else {
+            callObj.reject(result);
+          }
+          hasResult = false;
+          break;
+        default:
+          hasResult = false;
+      }
+    } catch(e) {
+      hasResult = false;
+      exception = e;
+      error = `
 Message: ${e.message}\n
 Filename: ${e.fileName}\n
 LineNumber: ${e.lineNumber}\n
 MethodName: ${e.methodName}\n
 ClassName: ${e.className}\n
 `;
-      }
+    }
 
-      // send result
-      if (hasResult) {
-        this.sendAnswer({
-          type: "result",
-          id,
-          className,
-          methodName,
-          result: (result = this.handleArgument(got))
-        });
-      }
+    if (hasResult) {
+      result = this.handleArgument(got);
+    }
 
-      //
-      if (typeof error != "undefined") {
-        //throw exception;
-        console.error(`ERROR!\n${error}`);
-        this.sendAnswer({
-          type: "error",
-          id,
-          className,
-          methodName,
-          error: error
-        });
-      }
-
-      // receive result
-      if (type == "result" && callObj) {
-        callObj.resolve(result);
-      }
-
-      // present full debug info
-      if (type == "error" && callObj) {
-        let fullError = `ERROR!\n
+    // present full debug info
+    if (type == "error" && callObj) {
+      let fullError = `ERROR!\n
 CallId: ${id}\n
 Type: ${callObj.type}\n
 ClassName: ${callObj.className}\n
@@ -500,22 +486,73 @@ Arguments: ${callObj.args}\n
 ${error}\n
 Please, send it to server or user-end developers.
 `;
-        callObj.reject(fullError);
-        console.error(fullError);
-      }
+      callObj.reject(fullError);
+      console.error(fullError);
+    }
 
-      // on register event
-      if (type == "register") {
-        this.watchers["register"].forEach((cb) => {
-          cb(result);
-        })
-      }
+    // on register event
+    if (type == "register") {
+      this.watchers["register"].forEach((cb) => {
+        cb(result);
+      })
+    }
+
+    return {id, result, exception, error, hasResult, className, methodName};
+  }
+
+  handleCmd(cmdObj) {
+    let id = cmdObj.id ? cmdObj.id : uuid();
+    this.calls[id] = {};
+    this.calls[id] = Object.assign(this.calls[id], {
+      id, cmdObj: Object.assign(cmdObj, {id}), promise: new Promise((resolve, reject) => {
+        this.calls[id].resolve = (...args) => {
+          resolve(...args);
+          delete this.calls[id];
+        };
+        this.calls[id].reject = (...args) => {
+          reject(...args);
+          delete this.calls[id];
+        };
+      })
     });
+    return this.calls[id];
+  }
 
-    this.connection.on("close", (reason, details) => {
-      for (let id in this.calls) {
-        let callObj = this.calls[id];
-        let error = `DISCONNECTED!\n
+  setCmd(className, methodName, value) {
+    //value = !(typeof methodName == "string" || methodName instanceof String) ? methodName : value;
+    //methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
+    return { type: "set", className, methodName, argsRaw: this.encodeArguments([value]) };
+  }
+
+  deleteCmd(className, methodName) {
+    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
+    return { type: "delete", className, methodName }
+  }
+
+  getCmd(className, methodName) {
+    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
+    return { type: "get", className, methodName }
+  }
+
+  applyCmd(className, methodName, args, thisArg) {
+    args = Array.isArray(methodName) ? methodName : args;
+    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
+    let thisArgRaw = this.handleArgument(this.makeClass(thisArg));
+    return { type: "apply", className, methodName, thisArgRaw, argsRaw: this.encodeArguments(args) };
+  }
+
+  constructCmd(className, args) {
+    return { type: "construct", className, argsRaw: this.encodeArguments(args) };
+  }
+
+  wrapPromise(callObj) {
+    return wrap(callObj.promise);
+  }
+
+  close(reason, details) {
+    for (let id in this.calls) {
+      let callObj = this.calls[id];
+      let error = `DISCONNECTED!\n
 CallId ${id}\n
 Type ${callObj.type}\n
 ClassName ${callObj.className}\n
@@ -525,51 +562,89 @@ Reason ${reason}\n
 Details: ${details}\n
 Please, notify server developers, or try to reload webpage.
 `;
-        callObj.reject(error);
-        console.error(error);
-      }
-    });
+      callObj.reject(error);
+      console.error(error);
+    }
   }
+};
 
-  on(name, cb) {
-    this.watchers[name].push(cb);
-  }
-
-  set(className, methodName, value) {
-    //value = !(typeof methodName == "string" || methodName instanceof String) ? methodName : value;
-    //methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
-    return this.sendRequest({ type: "set", className, methodName, argsRaw: this.encodeArguments([value]) });
-  }
-
-  delete(className, methodName) {
-    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
-    return this.sendRequest({ type: "delete", className, methodName });
-  }
-
-  get(className, methodName) {
-    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
-    return this.sendRequest({ type: "get", className, methodName });
-  }
-
-  apply(className, methodName, args, thisArg) {
-    args = Array.isArray(methodName) ? methodName : args;
-    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
-    let thisArgRaw = this.handleArgument(this.makeClass(thisArg));
-    return this.sendRequest({ type: "apply", className, methodName, thisArgRaw, argsRaw: this.encodeArguments(args) });
-  }
-
-  construct(className, args) {
-    return this.sendRequest({ type: "construct", className, argsRaw: this.encodeArguments(args) });
+class WSComlink {
+  constructor(connection, protocol = null, observe = true) {
+    this.connection = connection;
+    this.handler = new ClassHandler(this);
+    this.protocol = protocol ? protocol : new Protocol(this.handler);
+    if (observe) { this.observe(); };
   }
 
   proxy(className, origin={}) {
-    // make promise for proxy
-    let obj = function(...args) {
-      console.error("For Proxy, isn't it?");
-    };
-    Object.assign(obj, { origin: {...origin, className: origin.className||className}, className, last: null, temporary: false });
-    return (new Proxy(obj, this.handler));
+    return this.protocol.proxy(className, origin);
   }
-}
+
+  on(name, cb) {
+    return this.protocol.on(name, cb);
+  }
+
+  async sendAnswer(cmdObj) {
+    let existId = await cmdObj.id;
+    this.connection.send(JSON.stringify(Object.assign(cmdObj, {id: existId ? existId : uuid()})));
+  }
+
+  async sendRequest(cmdObj) {
+    let callObj = this.protocol.handleCmd(cmdObj);
+    let existId = await cmdObj.id;
+    this.connection.send(JSON.stringify(Object.assign(cmdObj, {id: existId ? existId : uuid()})));
+    return (await this.protocol.wrapPromise(callObj));
+  }
+
+  register(name, object, notify = true) {
+    if (notify) {
+      this.sendAnswer(this.protocol.register(name, object, notify));
+    };
+  }
+
+  observe() {
+    this.connection.on("message", async (message, isBinary) => {
+      let json = message.data ? message.data : message.toString('utf8');
+      let handled = await this.protocol.handleEvent(json);
+      let {result, exception, error, hasResult} = handled;
+
+      // send result
+      if (hasResult) {
+        this.sendAnswer({type: "result", ...handled});
+      }
+
+      //
+      if (typeof error != "undefined") {
+        //throw exception;
+        console.error(`ERROR!\n${error}`);
+        this.sendAnswer({type: "error", ...handled });
+      }
+    });
+
+    this.connection.on("close", this.protocol.close.bind(this.protocol));
+  }
+
+  set(className, methodName, value) {
+    return wrap(this.sendRequest(this.protocol.setCmd(className, methodName, value)));
+  }
+
+  delete(className, methodName) {
+    return wrap(this.sendRequest(this.protocol.deleteCmd(className, methodName)));
+  }
+
+  get(className, methodName) {
+    return wrap(this.sendRequest(this.protocol.getCmd(className, methodName)));
+  }
+
+  apply(className, methodName, args, thisArg) {
+    return wrap(this.sendRequest(this.protocol.applyCmd(className, methodName, args, thisArg)));
+  }
+
+  construct(className, args) {
+    return wrap(this.sendRequest(this.protocol.constructCmd(className, args)));
+  }
+
+};
 
 export default WSComlink;
+export { WSComlink, Protocol };
