@@ -686,7 +686,7 @@ class WSComlink {
 
       // need protocol for command encoding and execution
       this.pt = new Protocol(new ClassHandler(exec), cmd);
-    };
+    } else { this.pt = pt; };
 
     if (observe) { this.observe(); };
   }
