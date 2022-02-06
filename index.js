@@ -682,10 +682,9 @@ class WSComlink {
     // initialize
     if (!pt) {
       let cmd = new CommandEncoder();
-      let exec = new Executor(this, cmd);
 
       // need protocol for command encoding and execution
-      this.pt = new Protocol(new ClassHandler(exec), cmd);
+      this.pt = new Protocol(new ClassHandler(new Executor(this, cmd)), cmd);
     } else { this.pt = pt; };
 
     if (observe) { this.observe(); };
