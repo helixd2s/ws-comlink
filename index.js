@@ -304,9 +304,6 @@ class ClassHandler {
       return (await self.apply(target.className, null, args));
     })());
   }
-
-
-
 }
 
 class Protocol {
@@ -568,10 +565,48 @@ Please, notify server developers, or try to reload webpage.
   }
 };
 
+
+class Executor {
+  constructor(ws) {
+    this.ws = ws;
+  }
+
+  set(className, methodName, value) {
+    let ws = this.ws;
+    let pt = ws.protocol;
+    return wrap(ws.sendRequest(pt.setCmd(className, methodName, value)));
+  }
+
+  delete(className, methodName) {
+    let ws = this.ws;
+    let pt = ws.protocol;
+    return wrap(ws.sendRequest(pt.deleteCmd(className, methodName)));
+  }
+
+  get(className, methodName) {
+    let ws = this.ws;
+    let pt = ws.protocol;
+    return wrap(ws.sendRequest(pt.getCmd(className, methodName)));
+  }
+
+  apply(className, methodName, args, thisArg) {
+    let ws = this.ws;
+    let pt = ws.protocol;
+    return wrap(ws.sendRequest(pt.applyCmd(className, methodName, args, thisArg)));
+  }
+
+  construct(className, args) {
+    let ws = this.ws;
+    let pt = ws.protocol;
+    return wrap(ws.sendRequest(pt.constructCmd(className, args)));
+  }
+}
+
 class WSComlink {
   constructor(connection, protocol = null, observe = true) {
     this.connection = connection;
-    this.handler = new ClassHandler(this);
+    this.executor = new Executor(this);
+    this.handler = new ClassHandler(this.executor);
     this.protocol = protocol ? protocol : new Protocol(this.handler);
     if (observe) { this.observe(); };
   }
@@ -623,27 +658,6 @@ class WSComlink {
 
     this.connection.on("close", this.protocol.close.bind(this.protocol));
   }
-
-  set(className, methodName, value) {
-    return wrap(this.sendRequest(this.protocol.setCmd(className, methodName, value)));
-  }
-
-  delete(className, methodName) {
-    return wrap(this.sendRequest(this.protocol.deleteCmd(className, methodName)));
-  }
-
-  get(className, methodName) {
-    return wrap(this.sendRequest(this.protocol.getCmd(className, methodName)));
-  }
-
-  apply(className, methodName, args, thisArg) {
-    return wrap(this.sendRequest(this.protocol.applyCmd(className, methodName, args, thisArg)));
-  }
-
-  construct(className, args) {
-    return wrap(this.sendRequest(this.protocol.constructCmd(className, args)));
-  }
-
 };
 
 export default WSComlink;
