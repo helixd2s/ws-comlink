@@ -309,13 +309,14 @@ class ClassHandler {
 class CommandEncoder {
   constructor(pt = null) {
     this.pt = pt;
-    if (this.pt) { this.pt.setCommandEncoder(this); };
+    if (this.pt && !this.pt.getCommandEncoder()) { this.pt.setCommandEncoder(this); };
   }
 
   setProtocol(pt) {
     //if (!pt.getExecutor()) { pt.setExecutor(this); };
+    let result = (this.pt = pt);
     if (!pt.getCommandEncoder()) { pt.setCommandEncoder(this); };
-    return (this.pt = pt);
+    return result;
   };
 
   getProtocol() {
@@ -323,8 +324,9 @@ class CommandEncoder {
   };
 
   setExecutor(exec) {
-    if (!exec.getCommandEncoder()) { exec.setCommandEncoder(this); };
-    return (this.exec = exec);
+    let result = (this.exec = exec);
+    if (!exec.cmd) { exec.setCommandEncoder(this); };
+    return result;
   };
 
   getExecutor() {
@@ -384,18 +386,20 @@ class CommandEncoder {
 
 class Protocol {
   constructor(handler = null, cmd = null) {
-    this.cmd = cmd ? cmd : new CommandEncoder(this);
+    this.cmd = cmd;
     this.handler = handler;
     this.objects = {};
     this.calls = {};
     this.watchers = {
       register: []
     };
+    if (this.cmd && !this.cmd.getProtocol()) { this.cmd.setProtocol(this); };
   }
 
   setExecutor(exec) {
+    let result = (this.exec = exec);
     if (!exec.getProtocol()) { exec.setProtocol(this); };
-    return (this.exec = exec);
+    return result;
   };
 
   getExecutor() {
@@ -403,8 +407,9 @@ class Protocol {
   };
 
   setCommandEncoder(cmd) {
-    if (!cmd.getProtocol()) { cmd.setProtocol(this); };
-    return (this.cmd = cmd);
+    let result = (this.cmd = cmd);
+    if (!cmd.getProtocol) { cmd.setProtocol(this); };
+    return result;
   };
 
   getCommandEncoder() {
@@ -413,6 +418,10 @@ class Protocol {
 
   setClassHandler(handler) {
     return (this.handler = handler);
+  };
+
+  getClassHandler() {
+    return this.handler;
   };
 
   on(name, cb) {
@@ -673,11 +682,9 @@ class WSComlink {
     // initialize
     this.cmd = new CommandEncoder();
     this.exec = new Executor(this, this.cmd);
-    this.handler = new ClassHandler(this.exec);
 
     // need protocol for command encoding and execution
-    this.cmd.setProtocol(this.pt = pt ? pt : new Protocol(this.handler));
-
+    this.pt = pt ? pt : new Protocol(this.handler = new ClassHandler(this.exec), this.cmd);
 
     if (observe) { this.observe(); };
   }
