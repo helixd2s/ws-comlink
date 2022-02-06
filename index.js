@@ -306,8 +306,85 @@ class ClassHandler {
   }
 }
 
+class CommandEncoder {
+  constructor(pt = null) {
+    this.pt = pt;
+    if (this.pt) { this.pt.setCommandEncoder(this); };
+  }
+
+  setProtocol(pt) {
+    //if (!pt.getExecutor()) { pt.setExecutor(this); };
+    if (!pt.getCommandEncoder()) { pt.setCommandEncoder(this); };
+    return (this.pt = pt);
+  };
+
+  getProtocol() {
+    return this.pt;
+  };
+
+  setExecutor(exec) {
+    if (!exec.getCommandEncoder()) { exec.setCommandEncoder(this); };
+    return (this.exec = exec);
+  };
+
+  getExecutor() {
+    return this.exec;
+  };
+
+  handle(cmdObj) {
+    let id = cmdObj.id ? cmdObj.id : uuid();
+    let pt = this.pt;
+    let calls = pt.calls;
+    calls[id] = {};
+    calls[id] = Object.assign(calls[id], {
+      id, cmdObj: Object.assign(cmdObj, {id}), promise: new Promise((resolve, reject) => {
+        calls[id].resolve = (...args) => {
+          resolve(...args);
+          delete calls[id];
+        };
+        calls[id].reject = (...args) => {
+          reject(...args);
+          delete calls[id];
+        };
+      })
+    });
+    return calls[id];
+  }
+
+  set(className, methodName, value) {
+    //value = !(typeof methodName == "string" || methodName instanceof String) ? methodName : value;
+    //methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
+    let pt = this.pt;
+    return { type: "set", className, methodName, argsRaw: pt.encodeArguments([value]) };
+  }
+
+  delete(className, methodName) {
+    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
+    return { type: "delete", className, methodName }
+  }
+
+  get(className, methodName) {
+    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
+    return { type: "get", className, methodName }
+  }
+
+  apply(className, methodName, args, thisArg) {
+    let pt = this.pt;
+    args = Array.isArray(methodName) ? methodName : args;
+    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
+    let thisArgRaw = pt.handleArgument(pt.makeClass(thisArg));
+    return { type: "apply", className, methodName, thisArgRaw, argsRaw: pt.encodeArguments(args) };
+  }
+
+  construct(className, args) {
+    let pt = this.pt;
+    return { type: "construct", className, argsRaw: pt.encodeArguments(args) };
+  }
+}
+
 class Protocol {
-  constructor(handler = null) {
+  constructor(handler = null, cmd = null) {
+    this.cmd = cmd ? cmd : new CommandEncoder(this);
     this.handler = handler;
     this.objects = {};
     this.calls = {};
@@ -315,6 +392,24 @@ class Protocol {
       register: []
     };
   }
+
+  setExecutor(exec) {
+    if (!exec.getProtocol()) { exec.setProtocol(this); };
+    return (this.exec = exec);
+  };
+
+  getExecutor() {
+    return this.exec;
+  };
+
+  setCommandEncoder(cmd) {
+    if (!cmd.getProtocol()) { cmd.setProtocol(this); };
+    return (this.cmd = cmd);
+  };
+
+  getCommandEncoder() {
+    return this.cmd;
+  };
 
   setClassHandler(handler) {
     return (this.handler = handler);
@@ -497,50 +592,7 @@ Please, send it to server or user-end developers.
     return {id, result, exception, error, hasResult, className, methodName};
   }
 
-  handleCmd(cmdObj) {
-    let id = cmdObj.id ? cmdObj.id : uuid();
-    this.calls[id] = {};
-    this.calls[id] = Object.assign(this.calls[id], {
-      id, cmdObj: Object.assign(cmdObj, {id}), promise: new Promise((resolve, reject) => {
-        this.calls[id].resolve = (...args) => {
-          resolve(...args);
-          delete this.calls[id];
-        };
-        this.calls[id].reject = (...args) => {
-          reject(...args);
-          delete this.calls[id];
-        };
-      })
-    });
-    return this.calls[id];
-  }
 
-  setCmd(className, methodName, value) {
-    //value = !(typeof methodName == "string" || methodName instanceof String) ? methodName : value;
-    //methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
-    return { type: "set", className, methodName, argsRaw: this.encodeArguments([value]) };
-  }
-
-  deleteCmd(className, methodName) {
-    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
-    return { type: "delete", className, methodName }
-  }
-
-  getCmd(className, methodName) {
-    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
-    return { type: "get", className, methodName }
-  }
-
-  applyCmd(className, methodName, args, thisArg) {
-    args = Array.isArray(methodName) ? methodName : args;
-    methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
-    let thisArgRaw = this.handleArgument(this.makeClass(thisArg));
-    return { type: "apply", className, methodName, thisArgRaw, argsRaw: this.encodeArguments(args) };
-  }
-
-  constructCmd(className, args) {
-    return { type: "construct", className, argsRaw: this.encodeArguments(args) };
-  }
 
   wrapPromise(callObj) {
     return wrap(callObj.promise);
@@ -567,56 +619,85 @@ Please, notify server developers, or try to reload webpage.
 
 
 class Executor {
-  constructor(ws) {
-    this.ws = ws;
+  constructor(wsc = null, cmd = null) {
+    this.wsc = wsc;
+    this.cmd = cmd;
+    if (this.wsc) { this.wsc.setExecutor(this); };
+    if (this.cmd) { this.cmd.setExecutor(this); };
   }
 
+  setCommandEncoder(cmd) {
+    if (!cmd.getExecutor()) { cmd.setExecutor(this); };
+    return (this.cmd = cmd);
+  };
+
+  getCommandEncoder() {
+    return this.cmd;
+  };
+
   set(className, methodName, value) {
-    let ws = this.ws;
-    let pt = ws.protocol;
-    return wrap(ws.sendRequest(pt.setCmd(className, methodName, value)));
+    let wsc = this.wsc;
+    let cmd = this.cmd;
+    return wrap(wsc.sendRequest(cmd.set(className, methodName, value)));
   }
 
   delete(className, methodName) {
-    let ws = this.ws;
-    let pt = ws.protocol;
-    return wrap(ws.sendRequest(pt.deleteCmd(className, methodName)));
+    let wsc = this.wsc;
+    let cmd = this.cmd;
+    return wrap(wsc.sendRequest(cmd.delete(className, methodName)));
   }
 
   get(className, methodName) {
-    let ws = this.ws;
-    let pt = ws.protocol;
-    return wrap(ws.sendRequest(pt.getCmd(className, methodName)));
+    let wsc = this.wsc;
+    let cmd = this.cmd;
+    return wrap(wsc.sendRequest(cmd.get(className, methodName)));
   }
 
   apply(className, methodName, args, thisArg) {
-    let ws = this.ws;
-    let pt = ws.protocol;
-    return wrap(ws.sendRequest(pt.applyCmd(className, methodName, args, thisArg)));
+    let wsc = this.wsc;
+    let cmd = this.cmd;
+    return wrap(wsc.sendRequest(cmd.apply(className, methodName, args, thisArg)));
   }
 
   construct(className, args) {
-    let ws = this.ws;
-    let pt = ws.protocol;
-    return wrap(ws.sendRequest(pt.constructCmd(className, args)));
+    let wsc = this.wsc;
+    let cmd = this.cmd;
+    return wrap(wsc.sendRequest(cmd.construct(className, args)));
   }
 }
 
 class WSComlink {
-  constructor(connection, protocol = null, observe = true) {
+  constructor(connection, pt = null, observe = true) {
     this.connection = connection;
-    this.executor = new Executor(this);
-    this.handler = new ClassHandler(this.executor);
-    this.protocol = protocol ? protocol : new Protocol(this.handler);
+
+    // initialize
+    this.cmd = new CommandEncoder();
+    this.exec = new Executor(this, this.cmd);
+    this.handler = new ClassHandler(this.exec);
+
+    // need protocol for command encoding and execution
+    this.cmd.setProtocol(this.pt = pt ? pt : new Protocol(this.handler));
+
+
     if (observe) { this.observe(); };
   }
 
+  //
+  setProtocol(pt) {return (this.pt = pt); };
+  setExecutor(exec) {return (this.exec = exec); };
+
+  //
+  getProtocol() { return this.pt; };
+  getExecutor() { return this.exec; };
+
+
+
   proxy(className, origin={}) {
-    return this.protocol.proxy(className, origin);
+    return this.pt.proxy(className, origin);
   }
 
   on(name, cb) {
-    return this.protocol.on(name, cb);
+    return this.pt.on(name, cb);
   }
 
   async sendAnswer(cmdObj) {
@@ -625,22 +706,22 @@ class WSComlink {
   }
 
   async sendRequest(cmdObj) {
-    let callObj = this.protocol.handleCmd(cmdObj);
+    let callObj = this.cmd.handle(cmdObj);
     let existId = await cmdObj.id;
     this.connection.send(JSON.stringify(Object.assign(cmdObj, {id: existId ? existId : uuid()})));
-    return (await this.protocol.wrapPromise(callObj));
+    return (await this.pt.wrapPromise(callObj));
   }
 
   register(name, object, notify = true) {
     if (notify) {
-      this.sendAnswer(this.protocol.register(name, object, notify));
+      this.sendAnswer(this.pt.register(name, object, notify));
     };
   }
 
   observe() {
     this.connection.on("message", async (message, isBinary) => {
       let json = message.data ? message.data : message.toString('utf8');
-      let handled = await this.protocol.handleEvent(json);
+      let handled = await this.pt.handleEvent(json);
       let {result, exception, error, hasResult} = handled;
 
       // send result
@@ -656,9 +737,9 @@ class WSComlink {
       }
     });
 
-    this.connection.on("close", this.protocol.close.bind(this.protocol));
+    this.connection.on("close", this.pt.close.bind(this.pt));
   }
 };
 
 export default WSComlink;
-export { WSComlink, Protocol };
+export { WSComlink, Protocol, Executor, CommandEncoder };
