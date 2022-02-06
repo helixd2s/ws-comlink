@@ -333,26 +333,6 @@ class CommandEncoder {
     return this.exec;
   };
 
-  handle(cmdObj) {
-    let id = cmdObj.id ? cmdObj.id : uuid();
-    let pt = this.pt;
-    let calls = pt.calls;
-    calls[id] = {};
-    calls[id] = Object.assign(calls[id], {
-      id, cmdObj: Object.assign(cmdObj, {id}), promise: new Promise((resolve, reject) => {
-        calls[id].resolve = (...args) => {
-          resolve(...args);
-          delete calls[id];
-        };
-        calls[id].reject = (...args) => {
-          reject(...args);
-          delete calls[id];
-        };
-      })
-    });
-    return calls[id];
-  }
-
   set(className, methodName, value) {
     //value = !(typeof methodName == "string" || methodName instanceof String) ? methodName : value;
     //methodName = (typeof methodName == "string" || methodName instanceof String) ? methodName : "";
@@ -395,6 +375,26 @@ class Protocol {
     };
     if (this.cmd && !this.cmd.getProtocol()) { this.cmd.setProtocol(this); };
   }
+
+  handle(cmdObj) {
+    let id = cmdObj.id ? cmdObj.id : uuid();
+    let pt = this;
+    let calls = this.calls;
+    calls[id] = {};
+    calls[id] = Object.assign(calls[id], {
+      id, cmdObj: Object.assign(cmdObj, {id}), promise: new Promise((resolve, reject) => {
+        calls[id].resolve = (...args) => {
+          resolve(...args);
+          delete calls[id];
+        };
+        calls[id].reject = (...args) => {
+          reject(...args);
+          delete calls[id];
+        };
+      })
+    });
+    return calls[id];
+  };
 
   setExecutor(exec) {
     let result = (this.exec = exec);
@@ -680,11 +680,13 @@ class WSComlink {
     this.connection = connection;
 
     // initialize
-    this.cmd = new CommandEncoder();
-    this.exec = new Executor(this, this.cmd);
+    if (!pt) {
+      let cmd = new CommandEncoder();
+      let exec = new Executor(this, cmd);
 
-    // need protocol for command encoding and execution
-    this.pt = pt ? pt : new Protocol(this.handler = new ClassHandler(this.exec), this.cmd);
+      // need protocol for command encoding and execution
+      this.pt = new Protocol(new ClassHandler(exec), cmd);
+    };
 
     if (observe) { this.observe(); };
   }
@@ -713,7 +715,7 @@ class WSComlink {
   }
 
   async sendRequest(cmdObj) {
-    let callObj = this.cmd.handle(cmdObj);
+    let callObj = this.pt.handle(cmdObj);
     let existId = await cmdObj.id;
     this.connection.send(JSON.stringify(Object.assign(cmdObj, {id: existId ? existId : uuid()})));
     return (await this.pt.wrapPromise(callObj));
