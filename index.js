@@ -168,12 +168,12 @@ Object.getOwnPropertyNames(Reflect).forEach(function (handler) {
 class ClassRouter {
   constructor(parent, objOrName = "", methodNameOrPath = "") {
     this.parent = parent;
-    if (typeof methodNameOrPath == "string" && methodNameOrPath) {
+    if (methodNameOrPath && typeof methodNameOrPath == "string") {
       // TODO: corrent path
       this.objOrName = objOrName;
       this.methodNameOrPath = methodNameOrPath;
     } else 
-    if (typeof objOrName == "string" && objOrName) {
+    if (objOrName && typeof objOrName == "string") {
       // set true path
       let splitPath = objOrName.split(".");
       this.objOrName = splitPath.shift();
