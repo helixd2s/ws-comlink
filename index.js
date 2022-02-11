@@ -271,7 +271,7 @@ class ClassHandler {
     let self = this.self;
     {
       return wrap((async()=>{
-        if (target.last) { await target.last; }; target.last = null;
+        if (target.last) { await target?.last; }; target.last = null;
         return await (target.last = self.delete(target.className, name));
       })());
     }
@@ -309,29 +309,29 @@ class ClassHandler {
 class CommandEncoder {
   constructor(pt = null) {
     this.pt = pt;
-    if (this.pt && !this.pt.getCommandEncoder()) { this.pt.setCommandEncoder(this); };
+    if (!this.pt?.getCommandEncoder()) { this.pt?.setCommandEncoder(this); };
   }
 
   setProtocol(pt) {
     //if (!pt.getExecutor()) { pt.setExecutor(this); };
     let result = (this.pt = pt);
-    if (!pt.getCommandEncoder()) { pt.setCommandEncoder(this); };
+    if (!pt?.getCommandEncoder()) { pt?.setCommandEncoder(this); };
     return result;
-  };
+  }
 
   getProtocol() {
     return this.pt;
-  };
+  }
 
   setExecutor(exec) {
     let result = (this.exec = exec);
-    if (!exec.cmd) { exec.setCommandEncoder(this); };
+    if (!exec.cmd) { exec?.setCommandEncoder(this); };
     return result;
-  };
+  }
 
   getExecutor() {
     return this.exec;
-  };
+  }
 
   set(className, methodName, value) {
     //value = !(typeof methodName == "string" || methodName instanceof String) ? methodName : value;
@@ -373,7 +373,9 @@ class Protocol {
     this.watchers = {
       register: []
     };
-    if (this.cmd && !this.cmd.getProtocol()) { this.cmd.setProtocol(this); };
+    if (!this.cmd?.getProtocol()) { 
+      this.cmd?.setProtocol(this);
+    };
   }
 
   handle(cmdObj) {
@@ -394,35 +396,35 @@ class Protocol {
       })
     });
     return calls[id];
-  };
+  }
 
   setExecutor(exec) {
     let result = (this.exec = exec);
-    if (!exec.getProtocol()) { exec.setProtocol(this); };
+    if (!exec?.getProtocol()) { exec?.setProtocol(this); };
     return result;
-  };
+  }
 
   getExecutor() {
     return this.exec;
-  };
+  }
 
   setCommandEncoder(cmd) {
     let result = (this.cmd = cmd);
-    if (!cmd.getProtocol) { cmd.setProtocol(this); };
+    if (!cmd?.getProtocol) { cmd?.setProtocol(this); };
     return result;
-  };
+  }
 
   getCommandEncoder() {
     return this.cmd;
-  };
+  }
 
   setClassHandler(handler) {
     return (this.handler = handler);
-  };
+  }
 
   getClassHandler() {
     return this.handler;
-  };
+  }
 
   on(name, cb) {
     this.watchers[name].push(cb);
@@ -460,11 +462,11 @@ class Protocol {
   }
 
   handleArgument(a, payload={}) {
-    let className = a && a.$origin ? a.$origin.className : payload.className;
-    let temporary = a && a.$origin ? a.$origin.temporary : payload.temporary;
+    let className = (a?.$origin) ? a.$origin.className : payload.className;
+    let temporary = (a?.$origin) ? a.$origin.temporary : payload.temporary;
     let typeOf = typeof a;
     let data = a;
-    if (typeOf == "function" || (a && (a.$isProxy || a.$isClass))) {
+    if (typeOf == "function" || (a?.$isProxy || a?.$isClass)) {
       this.register(data = uuid(), a, !payload.temporary);
       typeOf = "proxy";
     };
@@ -631,12 +633,12 @@ class Executor {
   constructor(wsc = null, cmd = null) {
     this.wsc = wsc;
     this.cmd = cmd;
-    if (this.wsc) { this.wsc.setExecutor(this); };
-    if (this.cmd) { this.cmd.setExecutor(this); };
+    this.wsc?.setExecutor(this);
+    this.cmd?.setExecutor(this);
   }
 
   setCommandEncoder(cmd) {
-    if (!cmd.getExecutor()) { cmd.setExecutor(this); };
+    if (!cmd?.getExecutor()) { cmd?.setExecutor(this); };
     return (this.cmd = cmd);
   };
 
