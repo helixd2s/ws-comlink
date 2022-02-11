@@ -185,7 +185,7 @@ class ClassRouter {
     }
   }
   get obj() {
-    return (typeof this.objOrName == "string" && this.objOrName) ? Reflect.get(this.parent || {}, this.objOrName) : this.objOrName;
+    return (this.objOrName && typeof this.objOrName == "string") ? Reflect.get(this.parent || {}, this.objOrName) : this.objOrName;
   }
   set obj(a) {
     let obj = this.obj;
@@ -197,7 +197,7 @@ class ClassRouter {
     }
   }
   get objParent() {
-    if (typeof this.methodNameOrPath == "string" && this.methodNameOrPath) {
+    if (this.methodNameOrPath && typeof this.methodNameOrPath == "string") {
       let splitPath = this.methodNameOrPath.split(".");
       return (new ClassRouter(this.obj, splitPath.shift(), splitPath.join("."))).objParent;
     } else {
@@ -205,7 +205,7 @@ class ClassRouter {
     }
   }
   get delete() {
-    if (typeof this.methodNameOrPath == "string" && this.methodNameOrPath) {
+    if (this.methodNameOrPath && typeof this.methodNameOrPath == "string") {
       let splitPath = this.methodNameOrPath.split(".");
       (new ClassRouter(this.obj, splitPath.shift(), splitPath.join("."))).delete;
     } else {
@@ -213,7 +213,7 @@ class ClassRouter {
     }
   }
   get value() {
-    if (typeof this.methodNameOrPath == "string" && this.methodNameOrPath) {
+    if (this.methodNameOrPath && typeof this.methodNameOrPath == "string") {
       let splitPath = this.methodNameOrPath.split(".");
       return (new ClassRouter(this.obj, splitPath.shift(), splitPath.join("."))).value;
     } else {
@@ -221,7 +221,7 @@ class ClassRouter {
     }
   }
   set value(a) {
-    if (typeof this.methodNameOrPath == "string" && this.methodNameOrPath) {
+    if (this.methodNameOrPath && typeof this.methodNameOrPath == "string") {
       let splitPath = this.methodNameOrPath.split(".");
       (new ClassRouter(this.obj, splitPath.shift(), splitPath.join("."))).value = a;
     } else {
