@@ -1,5 +1,8 @@
 # JS WebSocket Intercom
 
+## 💬 [Обсуждения/Discussions](https://github.com/helixd2s/about/discussions) 💬
+## 🐞 [Баг-Репорты/Bug-Tracker](https://github.com/helixd2s/about/issues) 🐞
+
 The main task was to implement objects and classes, as well as method calls, over a remote websocket connection. This library is designed to solve this applied problem. It was originally created for the new game ch2048s, to implement the internal interface of the game. Or rather, libraries for the game, for its core. 
 
 ## Features
